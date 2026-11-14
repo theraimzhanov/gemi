@@ -40,10 +40,11 @@ export default function Feed() {
 
   async function like(id: number) {
     try {
-      await post(`/api/looks/${id}/like`, {});
-      setLooks((ls) => ls.map((l) => (l.id === id ? { ...l, likes: (l.likes ?? 0) + 1 } : l)));
-    } catch {
-      setStatus("Couldn't save that like.");
+      const { liked } = await post<{ liked: boolean }>(`/api/looks/${id}/like`, {});
+      if (liked) setLooks((ls) => ls.map((l) => (l.id === id ? { ...l, likes: (l.likes ?? 0) + 1 } : l)));
+      setStatus(liked ? "" : "You already liked that look.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Couldn't save that like.");
     }
   }
 

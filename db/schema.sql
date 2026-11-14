@@ -28,3 +28,19 @@ CREATE TABLE IF NOT EXISTS look_events (
 );
 SELECT create_hypertable('look_events', 'time', if_not_exists => true);
 CREATE INDEX IF NOT EXISTS look_events_look_idx ON look_events (look_id, time DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+  id            bigserial PRIMARY KEY,
+  username      text NOT NULL UNIQUE,
+  password_hash text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- Only a hash of the session token is stored, so a database leak cannot be replayed as a login.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash text PRIMARY KEY,
+  user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL
+);
+
+ALTER TABLE look_events ADD COLUMN IF NOT EXISTS user_id bigint;

@@ -1,3 +1,4 @@
+import { currentUser } from "@/lib/auth";
 import { db, toVector } from "@/lib/db";
 import { describe, embed, totalUsd } from "@/lib/gemini";
 import { bad, fail, isGarments, isImg } from "@/lib/validate";
@@ -23,9 +24,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const b = await req.json().catch(() => null);
-  const author = typeof b?.author === "string" ? b.author.trim().slice(0, 40) : "";
-  if (!author) return bad("Enter a display name before sharing.");
-  if (!isImg(b.image) || !isGarments(b.garments)) return bad("Nothing to share yet.");
+  const user = await currentUser().catch(() => null);
+  if (!user) return bad("Log in to share looks.", 401);
+  const author = user.username;
+  if (!isImg(b?.image) || !isGarments(b?.garments)) return bad("Nothing to share yet.");
   const refs = (Array.isArray(b.refs) ? b.refs : []).filter((r: unknown) => isImg(r)).slice(0, 8);
   // Keep only the fields we know, so the feed never renders arbitrary client data.
   const garments = b.garments.map((g: Record<string, unknown>) => ({

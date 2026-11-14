@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Img } from "@/lib/gemini";
-import { blobToWav, fileToImg, takeHandoff, loadSelfie, post, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
-import { btn, btnGhost, eyebrow, Header, Icon, iconBtn, LookCard, Receipt } from "./ui";
+import { blobToWav, fileToImg, setHandoff, takeHandoff, loadSelfie, post, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
+import { btn, btnGhost, eyebrow, Header, Icon, iconBtn, LookCard, Receipt, useUser } from "./ui";
 
 const TOOL_LABEL: Record<string, string> = {
   steal_look: "Steal This Look — copied the outfit from your photo",
@@ -34,7 +34,7 @@ export default function Studio() {
   const [trending, setTrending] = useState<FeedLook[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [name, setName] = useState("");
+  const user = useUser();
   const recorder = useRef<MediaRecorder | null>(null);
   const selfieInput = useRef<HTMLInputElement>(null);
   const outfitInput = useRef<HTMLInputElement>(null);
@@ -44,7 +44,6 @@ export default function Studio() {
     // Browser-only state, so it has to load after mount.
     /* eslint-disable react-hooks/set-state-in-effect */
     setSelfie(loadSelfie());
-    setName(localStorage.getItem("gemi.name") ?? "");
     const handed = takeHandoff();
     if (handed) setLook(handed);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -101,7 +100,7 @@ export default function Studio() {
 
   const share = () =>
     run("Sharing…", async () => {
-      await post("/api/looks", { author: name, image: look!.image, garments: look!.garments, refs: look!.refs });
+      await post("/api/looks", { image: look!.image, garments: look!.garments, refs: look!.refs });
       setStatus("Shared to the community feed.");
     });
 
@@ -190,14 +189,14 @@ export default function Studio() {
             </section>
             <section className="space-y-2 rounded-3xl border border-white/10 bg-white/5 p-4">
               <p className={eyebrow}>Share</p>
-              <label htmlFor="name" className="sr-only">Display name</label>
-              <input
-                id="name" value={name} placeholder="Display name" maxLength={40}
-                onChange={(e) => { setName(e.target.value); localStorage.setItem("gemi.name", e.target.value); }}
-                className="w-full rounded-full border border-white/15 bg-transparent px-4 py-2 text-sm placeholder:text-zinc-400"
-              />
+              {user && <p className="text-sm text-zinc-400">Sharing as <span className="text-zinc-100">{user.username}</span></p>}
               <div className="flex gap-2">
-                <button className={`${btn} flex-1`} disabled={busy || !name.trim()} onClick={share}>Share to community</button>
+                {user ? (
+                  <button className={`${btn} flex-1`} disabled={busy} onClick={share}>Share to community</button>
+                ) : (
+                  // Keep the look across the trip to the login page.
+                  <Link href="/login" className={`${btn} flex-1 text-center`} onClick={() => setHandoff(look)}>Log in to share</Link>
+                )}
                 <button className={btnGhost} onClick={() => { setLook(null); setStatus(""); }}>New look</button>
               </div>
             </section>

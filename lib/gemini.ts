@@ -276,6 +276,10 @@ export async function editLook(current: Img, instruction: string): Promise<Img> 
   return outputImage(r);
 }
 
+export async function generateImage(prompt: string, aspect_ratio = "3:4"): Promise<Img> {
+  return outputImage(await create({ model: IMAGE, input: [text(prompt)], response_format: { type: "image", aspect_ratio } }));
+}
+
 export async function embed(content: string): Promise<number[]> {
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const r = await client.models.embedContent({ model: EMBED, contents: content, config: { outputDimensionality: 768 } });

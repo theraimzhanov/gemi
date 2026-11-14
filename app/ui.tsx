@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Garment } from "@/lib/gemini";
 import type { FeedLook } from "@/lib/client";
@@ -26,7 +27,22 @@ export function Icon({ name, className = "size-5" }: { name: keyof typeof paths;
   );
 }
 
+export type User = { id: string; username: string };
+// undefined while loading, null when logged out.
+export function useUser() {
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+  useEffect(() => {
+    fetch("/api/auth")
+      .then((r) => r.json())
+      .then((d) => setUser(d.user ?? null))
+      .catch(() => setUser(null));
+  }, []);
+  return user;
+}
+
 export function Header() {
+  const user = useUser();
+  const logout = () => fetch("/api/auth", { method: "DELETE" }).finally(() => location.reload());
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-background/80 px-5 py-3 backdrop-blur">
       <Link href="/" className={`flex items-center gap-2 text-lg font-semibold tracking-tight ${focus}`}>
@@ -35,7 +51,9 @@ export function Header() {
       </Link>
       <nav className="flex gap-2">
         <Link href="/" className={btnGhost}>Studio</Link>
-        <Link href="/feed" className={btn}>Community</Link>
+        <Link href="/feed" className={btnGhost}>Community</Link>
+        {user && <button className={btnGhost} onClick={logout}>Log out<span className="hidden sm:inline"> · {user.username}</span></button>}
+        {user === null && <Link href="/login" className={btn}>Log in</Link>}
       </nav>
     </header>
   );
