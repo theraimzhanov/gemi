@@ -48,3 +48,8 @@ ALTER TABLE look_events ADD COLUMN IF NOT EXISTS user_id bigint;
 -- Login is by email; the username is the public name shown on shared looks. Demo accounts have no email.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email);
+
+-- Every generated look is saved for its owner; only shared ones appear in the community feed.
+ALTER TABLE looks ADD COLUMN IF NOT EXISTS user_id bigint REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE looks ADD COLUMN IF NOT EXISTS shared boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS looks_user_idx ON looks (user_id, created_at DESC);

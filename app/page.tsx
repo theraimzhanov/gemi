@@ -1,280 +1,138 @@
-"use client";
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { Img } from "@/lib/gemini";
-import { blobToWav, fileToImg, setHandoff, takeHandoff, loadSelfie, post, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
-import { btn, btnGhost, eyebrow, Header, Icon, iconBtn, LookCard, Receipt, useUser } from "./ui";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth";
+import { DEMO } from "@/lib/demo";
+import { totalUsd } from "@/lib/gemini";
+import { btn, btnGhost, display } from "./styles";
+import { Art, Icon, Logo, Tag } from "./ui";
 
-const TOOL_LABEL: Record<string, string> = {
-  steal_look: "Steal This Look — copied the outfit from your photo",
-  shop_and_dress: "Personal Shopper — searched the web for real items",
-  micro_edit: "Micro-Edit — changed one detail",
-  find_similar: "Closet Search — matched looks from the community",
-  try_on: "Community look tried on you",
-};
-
-// Each card shows one thing Gemi can do; picking it fills the prompt (or opens the outfit picker).
-const STARTERS = [
-  { tag: "Steal This Look", title: "Copy an outfit from any photo", tint: "from-fuchsia-600/60 to-indigo-900/60", prompt: null },
-  { tag: "Personal Shopper", title: "Find a red dress under $100", tint: "from-rose-600/60 to-orange-900/50", prompt: "Find a red dress under $100" },
-  { tag: "Just one piece", title: "I only need a blue top", tint: "from-sky-600/60 to-indigo-900/60", prompt: "I only need a blue top" },
-  { tag: "Closet Search", title: "Looks like streetwear with white sneakers", tint: "from-emerald-600/50 to-teal-900/60", prompt: "Show me community looks like streetwear with white sneakers" },
+const fade = { maskImage: "linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent)" };
+const plain = [
+  { category: "top", description: "plain tee", color: "white" },
+  { category: "bottom", description: "jeans", color: "indigo" },
 ];
+const before = DEMO[8].garments;
+const after = before.map((g) => (g.category === "top" ? { ...g, color: "blue" } : g));
 
-type ChatReply = Partial<Look> & { intent: { tool: string; message?: string }; similar?: FeedLook[] };
-
-export default function Studio() {
-  const [selfie, setSelfie] = useState<Img | null>(null);
-  const [outfit, setOutfit] = useState<Img | null>(null);
-  const [text, setText] = useState("");
-  const [audio, setAudio] = useState<Img | null>(null);
-  const [recording, setRecording] = useState(false);
-  const [look, setLook] = useState<Look | null>(null);
-  const [similar, setSimilar] = useState<FeedLook[]>([]);
-  const [trending, setTrending] = useState<FeedLook[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
-  const user = useUser();
-  const recorder = useRef<MediaRecorder | null>(null);
-  const selfieInput = useRef<HTMLInputElement>(null);
-  const outfitInput = useRef<HTMLInputElement>(null);
-  const promptBox = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    // Browser-only state, so it has to load after mount.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setSelfie(loadSelfie());
-    const handed = takeHandoff();
-    if (handed) setLook(handed);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    fetch("/api/looks")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows: FeedLook[]) => setTrending(rows.slice(0, 4)))
-      .catch(() => {}); // the strip is optional; the studio works without the feed
-  }, []);
-
-  async function run(label: string, job: () => Promise<void>) {
-    setBusy(true);
-    setStatus(label);
-    try {
-      await job();
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function applyReply(r: ChatReply) {
-    if (r.image && r.garments) setLook({ image: r.image, garments: r.garments, refs: r.refs ?? [], total_usd: r.total_usd ?? 0, intent: r.intent });
-    setSimilar(r.similar ?? []);
-    setStatus(r.intent.message ?? `Gemi chose: ${TOOL_LABEL[r.intent.tool] ?? r.intent.tool}`);
-  }
-
-  const canSend = !busy && (!!outfit || !!text.trim() || !!audio);
-  const send = () =>
-    run("Gemi is working out what you need… this can take up to a minute.", async () => {
-      applyReply(await post<ChatReply>("/api/chat", { selfie, outfit, text, audio, current: look }));
-      setText(""); setAudio(null); setOutfit(null);
-    });
-
-  async function toggleMic() {
-    if (recording) return recorder.current?.stop();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const chunks: Blob[] = [];
-      const rec = new MediaRecorder(stream);
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setRecording(false);
-        setAudio(await blobToWav(new Blob(chunks)));
-      };
-      recorder.current = rec;
-      rec.start();
-      setRecording(true);
-    } catch {
-      setStatus("Microphone access was blocked. You can type your request instead.");
-    }
-  }
-
-  const share = () =>
-    run("Sharing…", async () => {
-      await post("/api/looks", { image: look!.image, garments: look!.garments, refs: look!.refs });
-      setStatus("Shared to the community feed.");
-    });
-
-  const tryShared = (id: number) => {
-    if (!selfie) return setStatus("Add your photo first — use the person button in the prompt box.");
-    run("Dressing you in that look… this can take up to a minute.", async () =>
-      applyReply(await post<ChatReply>(`/api/looks/${id}/tryon`, { selfie })));
-  };
-
-  const pick = (set: (i: Img) => void, after?: (i: Img) => void) => async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow picking the same file again
-    if (!file) return;
-    const img = await fileToImg(file);
-    set(img);
-    after?.(img);
-  };
-
-  function start(prompt: string | null) {
-    if (prompt === null) return outfitInput.current?.click();
-    setText(prompt);
-    promptBox.current?.focus();
-  }
-
-  const chip = "flex items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-2 text-xs";
-  const thumb = "size-7 rounded-full object-cover";
-  const prompt = (
-    <div className="w-full rounded-3xl border border-white/10 bg-white/[0.07] p-3 shadow-2xl shadow-black/40 backdrop-blur focus-within:border-fuchsia-400/60">
-      <input ref={selfieInput} type="file" accept="image/*" className="hidden" aria-label="Upload your photo" onChange={pick(setSelfie, saveSelfie)} />
-      <input ref={outfitInput} type="file" accept="image/*" className="hidden" aria-label="Upload an outfit photo" onChange={pick(setOutfit)} />
-      {(selfie || outfit || audio) && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {selfie && (
-            <span className={chip}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src(selfie)} alt="" className={thumb} /> You
-            </span>
-          )}
-          {outfit && (
-            <span className={chip}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src(outfit)} alt="" className={thumb} /> Outfit to copy
-              <button onClick={() => setOutfit(null)} aria-label="Remove outfit photo" className="hover:text-white"><Icon name="close" className="size-3.5" /></button>
-            </span>
-          )}
-          {audio && (
-            <span className={`${chip} pl-2`}>
-              <Icon name="mic" className="size-3.5" /> Voice request
-              <button onClick={() => setAudio(null)} aria-label="Remove voice request" className="hover:text-white"><Icon name="close" className="size-3.5" /></button>
-            </span>
-          )}
-        </div>
-      )}
-      <label htmlFor="ask" className="sr-only">Describe the look you want</label>
-      <textarea
-        id="ask" ref={promptBox} rows={2} value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend) send(); } }}
-        placeholder={look ? "Ask for a change… “swap the heels for sneakers”" : "Describe your look… “find a red dress under $100”"}
-        className="w-full resize-none bg-transparent px-2 py-1 text-base placeholder:text-zinc-400 focus:outline-none"
-      />
-      <div className="flex items-center gap-1">
-        <button className={iconBtn} onClick={() => outfitInput.current?.click()} disabled={busy} aria-label="Attach an outfit photo to copy" title="Attach an outfit photo"><Icon name="plus" /></button>
-        <button className={iconBtn} onClick={() => selfieInput.current?.click()} disabled={busy} aria-label={selfie ? "Change your photo" : "Add your photo"} title="Your photo"><Icon name="person" /></button>
-        <button className={iconBtn} onClick={toggleMic} disabled={busy} aria-pressed={recording} aria-label={recording ? "Stop recording" : "Speak your request"} title="Speak"><Icon name={recording ? "stop" : "mic"} /></button>
-        {recording && <span className="text-xs text-fuchsia-300">Listening… tap to stop</span>}
-        <button className={`${iconBtn} ml-auto bg-fuchsia-500 text-white hover:bg-fuchsia-400`} onClick={send} disabled={!canSend} aria-label="Style me">
-          <Icon name="send" />
-        </button>
-      </div>
+function Column({ from, reverse }: { from: number; reverse?: boolean }) {
+  const looks = [0, 1, 2, 3].map((i) => (from + i * 3) % DEMO.length);
+  return (
+    <div className={reverse ? "drift-reverse" : "drift"}>
+      {[...looks, ...looks].map((i, n) => (
+        <Art key={n} garments={DEMO[i].garments} seed={i} height={DEMO[i].height} className="mb-4 rounded-3xl" />
+      ))}
     </div>
   );
+}
 
-  const statusLine = <p role="status" aria-live="polite" className="min-h-5 text-center text-sm text-fuchsia-300">{status}</p>;
+function UseCase({ title, body, flip, children }: { title: string; body: string; flip?: boolean; children: React.ReactNode }) {
+  return (
+    <section className="grid items-center gap-8 md:grid-cols-2 md:gap-16">
+      <div className={flip ? "md:order-2" : ""}>
+        <h2 className={`${display} text-4xl md:text-5xl`}>{title}</h2>
+        <p className="mt-4 max-w-md text-lg leading-8 text-mute">{body}</p>
+      </div>
+      <div className="rounded-[2rem] bg-mist p-5 sm:p-8">{children}</div>
+    </section>
+  );
+}
 
+const Caption = ({ children }: { children: React.ReactNode }) => <p className="mt-2 text-center text-sm font-medium">{children}</p>;
+
+// Every request reads the login cookie, so this route renders on the server instead of from a static shell.
+export const instant = false;
+
+export default async function Landing() {
+  if (await currentUser().catch(() => null)) redirect("/studio");
   return (
     <>
-      <Header />
-      {look ? (
-        <main className="mx-auto grid w-full max-w-5xl gap-6 p-5 md:grid-cols-[minmax(0,1fr)_22rem]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src(look.image)} alt={`You wearing: ${look.garments.map((g) => g.description).join(", ")}`} className="fade-up w-full rounded-3xl border border-white/10" />
-          <div className="space-y-5">
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
-              <Receipt garments={look.garments} total={look.total_usd} />
-            </section>
-            <section className="space-y-2 rounded-3xl border border-white/10 bg-white/5 p-4">
-              <p className={eyebrow}>Share</p>
-              {user && <p className="text-sm text-zinc-400">Sharing as <span className="text-zinc-100">{user.username}</span></p>}
-              <div className="flex gap-2">
-                {user ? (
-                  <button className={`${btn} flex-1`} disabled={busy} onClick={share}>Share to community</button>
-                ) : (
-                  // Keep the look across the trip to the login page.
-                  <Link href="/login" className={`${btn} flex-1 text-center`} onClick={() => setHandoff(look)}>Log in to share</Link>
-                )}
-                <button className={btnGhost} onClick={() => { setLook(null); setStatus(""); }}>New look</button>
-              </div>
-            </section>
-            {prompt}
-            {statusLine}
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4">
+        <Logo />
+        <nav className="flex gap-2">
+          <Link href="/login" className={btnGhost}>Log in</Link>
+          <Link href="/login?mode=register" className={btn}>Sign up</Link>
+        </nav>
+      </header>
+
+      <main className="mx-auto w-full max-w-6xl space-y-24 px-5 pb-24 md:space-y-32">
+        <section className="grid items-center gap-10 md:grid-cols-[1.05fr_1fr]">
+          <div className="py-6">
+            <h1 className={`${display} text-6xl leading-[0.95] md:text-8xl`}>Try it on before you buy it.</h1>
+            <p className="mt-6 max-w-md text-lg leading-8 text-mute">
+              Show Gemi a photo, type what you want, or just say it. It finds real clothes, dresses you in them and hands you the receipt.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/login?mode=register" className={`${btn} px-7 py-3.5 text-base`}>Create your account</Link>
+              <Link href="/login" className={`${btnGhost} px-7 py-3.5 text-base`}>Log in</Link>
+            </div>
           </div>
-        </main>
-      ) : (
-        <main className="w-full">
-          <section className="hero-glow px-5 pb-10 pt-20 md:pt-28">
-            <div className="fade-up mx-auto flex max-w-2xl flex-col items-center gap-5 text-center">
-              <h1 className="text-5xl font-semibold tracking-tight md:text-6xl">Welcome to the fitting room</h1>
-              <p className="text-lg text-zinc-400">Wear anything you can imagine. Show a photo, type it, or just say it.</p>
-              {prompt}
-              {statusLine}
-              <div className="flex flex-wrap justify-center gap-2">
-                {!selfie && <button className={btn} onClick={() => selfieInput.current?.click()}>Add your photo to start</button>}
-                {STARTERS.map((s) => (
-                  <button key={s.tag} className={btnGhost} onClick={() => start(s.prompt)}>{s.tag}</button>
+          <div className="grid h-[22rem] grid-cols-3 gap-4 overflow-hidden md:h-[40rem]" style={fade} aria-hidden="true">
+            <Column from={0} />
+            <Column from={1} reverse />
+            <Column from={2} />
+          </div>
+        </section>
+
+        <UseCase title="Copy a whole outfit from one photo" body="See a look you love on someone else? Upload the picture. Gemi finds every piece in it, from jacket to shoes, and puts all of it on you in one go.">
+          <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 sm:gap-3">
+            <div><Art garments={DEMO[1].garments} seed={1} height={440} className="rounded-2xl" /><Caption>Their outfit</Caption></div>
+            <Icon name="plus" className="size-5 text-mute" />
+            <div><Art garments={plain} seed={3} height={440} className="rounded-2xl" /><Caption>You</Caption></div>
+            <span className={`${display} text-xl text-mute`} aria-hidden="true">=</span>
+            <div><Art garments={DEMO[1].garments} seed={3} height={440} className="rounded-2xl ring-2 ring-berry" /><Caption>You, wearing it</Caption></div>
+          </div>
+        </UseCase>
+
+        <UseCase flip title="Shop with a budget, in your own words" body="Ask for a red dress under $100. Gemi searches real stores, stays inside your budget and shows the price and the link for every item it picked.">
+          <div className="space-y-4">
+            <p className="ml-auto w-fit rounded-3xl rounded-br-md bg-ink px-5 py-3 text-sm text-white">Find a red dress under $100</p>
+            <div className="flex gap-4 rounded-3xl bg-white p-4">
+              <Art garments={DEMO[0].garments} seed={2} height={420} className="w-32 shrink-0 rounded-2xl sm:w-40" />
+              <ul className="flex-1 self-center text-sm">
+                {DEMO[0].garments.map((g) => (
+                  <li key={g.description} className="flex items-center justify-between gap-2 border-b border-line py-2.5">
+                    <span className="font-medium">{g.description}</span><Tag price={g.price_usd} />
+                  </li>
                 ))}
-              </div>
+                <li className={`${display} flex justify-between pt-3 text-base`}><span>Total</span><span>${totalUsd(DEMO[0].garments)}</span></li>
+              </ul>
             </div>
-          </section>
+          </div>
+        </UseCase>
 
-          <section className="mx-auto max-w-5xl space-y-3 px-5 py-8">
-            <h2 className="text-lg font-semibold">Get started</h2>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {STARTERS.map((s) => (
-                <button
-                  key={s.tag} onClick={() => start(s.prompt)}
-                  className={`flex aspect-[4/3] flex-col justify-end rounded-2xl border border-white/10 bg-gradient-to-br ${s.tint} p-4 text-left transition hover:border-white/40 focus-visible:outline-2 focus-visible:outline-fuchsia-400`}
-                >
-                  <span className={eyebrow}>{s.tag}</span>
-                  <span className="mt-1 text-sm font-medium">{s.title}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+        <UseCase title="Change one piece, keep the rest" body="Only need a blue top? Say so. Gemi swaps that one thing and leaves the rest of your outfit exactly as it was.">
+          <div className="grid grid-cols-2 gap-4">
+            <div><Art garments={before} seed={4} height={470} className="rounded-2xl" /><Caption>Before</Caption></div>
+            <div><Art garments={after} seed={4} height={470} className="rounded-2xl ring-2 ring-berry" /><Caption>After: only the top changed</Caption></div>
+          </div>
+        </UseCase>
 
-          {similar.length > 0 && (
-            <section className="mx-auto max-w-5xl space-y-3 px-5 py-8">
-              <h2 className="text-lg font-semibold">Matches from the community</h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {similar.map((s) => <LookCard key={s.id} look={s} busy={busy} onTry={() => tryShared(s.id)} />)}
-              </div>
-            </section>
-          )}
-
-          {trending.length > 0 && (
-            <section className="mx-auto max-w-5xl space-y-3 px-5 py-8">
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className={eyebrow}>Share</p>
-                  <h2 className="text-2xl font-semibold">Trending in the community</h2>
+        <UseCase flip title="Wear what the community is wearing" body="Share a look you like. Anyone can then try that exact outfit on themselves with one click, using only their own photo.">
+          <div className="masonry columns-3">
+            {[6, 3, 9, 5, 11, 7].map((i, n) => (
+              <div key={i}>
+                <div className="relative overflow-hidden rounded-2xl">
+                  <Art garments={DEMO[i].garments} seed={i} height={DEMO[i].height} />
+                  {n === 1 && <span className="absolute inset-x-2 bottom-2 rounded-full bg-white py-1.5 text-center text-xs font-semibold">Try on me</span>}
                 </div>
-                <Link href="/feed" className={btnGhost}>See all</Link>
-              </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {trending.map((s) => <LookCard key={s.id} look={s} busy={busy} onTry={() => tryShared(s.id)} />)}
-              </div>
-            </section>
-          )}
-
-          <section className="mx-auto grid max-w-5xl gap-8 px-5 py-14 md:grid-cols-3">
-            {[
-              ["Create", "One box, any input", "Photo, text or voice. Gemi works out what you mean and picks the right tool by itself."],
-              ["Shop", "Real clothes, real prices", "Gemi searches the web for items in your budget and gives you an itemized receipt with store links."],
-              ["Share", "One click to try it on", "Publish a look and anyone can wear the same outfit with only their own photo."],
-            ].map(([tag, title, body]) => (
-              <div key={tag} className="space-y-2 border-t border-white/10 pt-5">
-                <p className={eyebrow}>{tag}</p>
-                <h3 className="text-xl font-semibold">{title}</h3>
-                <p className="text-sm leading-6 text-zinc-400">{body}</p>
+                <div className="flex items-center justify-between px-1 pt-1.5 text-xs">
+                  <span className="font-medium">{DEMO[i].author}</span><Tag price={totalUsd(DEMO[i].garments)} />
+                </div>
               </div>
             ))}
-          </section>
-        </main>
-      )}
+          </div>
+        </UseCase>
+
+        <section className="rounded-[2.5rem] bg-ink px-6 py-16 text-center text-white">
+          <h2 className={`${display} mx-auto max-w-2xl text-5xl md:text-6xl`}>Your fitting room is open.</h2>
+          <p className="mx-auto mt-4 max-w-md text-lg text-white/70">Free to start. All you need is one photo of yourself.</p>
+          <Link href="/login?mode=register" className="mt-8 inline-flex rounded-full bg-tag px-7 py-3.5 text-base font-semibold text-ink transition-colors hover:bg-white">Create your account</Link>
+        </section>
+      </main>
+
+      <footer className="mx-auto w-full max-w-6xl px-5 pb-10 text-sm text-mute">
+        The pictures on this page are illustrations. Looks you create in Gemi are generated from your own photo.
+      </footer>
     </>
   );
 }

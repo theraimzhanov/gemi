@@ -1,35 +1,75 @@
 @import "tailwindcss";
 
-/* Gemi is dark-only: a studio look where the generated photo is the brightest thing on screen. */
-:root {
-  --background: #101014;
-  --foreground: #f4f4f5;
-  color-scheme: dark;
+@theme inline {
+  --color-ink: #1b1722;
+  --color-mist: #f4f2f7;
+  --color-line: #e6e2ec;
+  --color-mute: #6f6878;
+  --color-berry: #8e1f5a;
+  --color-tag: #d8f05a;
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-bricolage);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #fff;
+  color: var(--color-ink);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Soft glow behind the hero prompt. */
-.hero-glow {
-  background: radial-gradient(60% 55% at 50% 45%, rgb(192 38 211 / 0.22), rgb(79 70 229 / 0.1) 45%, transparent 75%);
+:focus-visible {
+  outline: 2px solid var(--color-berry);
+  outline-offset: 2px;
+}
+
+/* Price tag: the swing-tag shape every price in Gemi is shown on. */
+.tag {
+  display: inline-block;
+  padding: 2px 9px 2px 19px;
+  background: radial-gradient(circle at 10px 50%, #fff 2.5px, transparent 3px), var(--color-tag);
+  clip-path: polygon(9px 0, 100% 0, 100% 100%, 9px 100%, 0 50%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Masonry: cards keep their own height and never split across columns. */
+.masonry {
+  column-gap: 1rem;
+}
+.masonry > * {
+  break-inside: avoid;
+  margin-bottom: 1rem;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .fade-up {
-    animation: fade-up 0.5s ease-out both;
+  /* The one piece of ambient motion: the landing collage drifts like a slow feed. */
+  .drift {
+    animation: drift 60s linear infinite;
   }
-  @keyframes fade-up {
-    from { opacity: 0; transform: translateY(10px); }
+  .drift-reverse {
+    animation: drift 70s linear infinite reverse;
+  }
+  @keyframes drift {
+    to { transform: translateY(-50%); }
+  }
+  .pop {
+    animation: pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  }
+  .pulse-dots span {
+    animation: dot 1.2s ease-in-out infinite;
+  }
+  .pulse-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .pulse-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes dot {
+    50% { opacity: 0.25; transform: translateY(-2px); }
   }
 }

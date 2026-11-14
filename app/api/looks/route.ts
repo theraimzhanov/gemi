@@ -1,20 +1,27 @@
 import { currentUser } from "@/lib/auth";
 import { db, toVector } from "@/lib/db";
-import { describe, embed, totalUsd } from "@/lib/gemini";
-import { bad, fail, isGarments, isImg } from "@/lib/validate";
+import { describe, embed } from "@/lib/gemini";
+import { bad, fail } from "@/lib/validate";
 
+// ?mine=1 lists the caller's own looks; otherwise the shared community feed (?sort=new for newest first).
 export async function GET(req: Request) {
-  const newest = new URL(req.url).searchParams.get("sort") === "new";
+  const q = new URL(req.url).searchParams;
+  const mine = q.get("mine") === "1";
   try {
+    const user = await currentUser();
+    if (!user) return bad("Log in to see looks.", 401);
     const { rows } = await db.query(
-      `SELECT l.id, l.author, l.garments, l.total_usd, l.created_at,
+      `SELECT l.id, l.author, l.garments, l.total_usd, l.created_at, l.shared,
               count(*) FILTER (WHERE e.kind = 'like')::int  AS likes,
               count(*) FILTER (WHERE e.kind = 'tryon')::int AS tryons,
-              count(*) FILTER (WHERE e.time > now() - interval '24 hours')::int AS hot
+              count(*) FILTER (WHERE e.time > now() - interval '24 hours')::int AS hot,
+              coalesce(bool_or(e.kind = 'like' AND e.user_id = $1), false) AS liked
        FROM looks l LEFT JOIN look_events e ON e.look_id = l.id
+       WHERE ${mine ? "l.user_id = $1" : "l.shared"}
        GROUP BY l.id
-       ORDER BY ${newest ? "l.created_at DESC" : "hot DESC, l.created_at DESC"}
-       LIMIT 60`,
+       ORDER BY ${mine || q.get("sort") === "new" ? "l.created_at DESC" : "hot DESC, l.created_at DESC"}
+       LIMIT 80`,
+      [user.id],
     );
     return Response.json(rows);
   } catch (e) {
@@ -22,42 +29,21 @@ export async function GET(req: Request) {
   }
 }
 
+// Shares one of the caller's own looks to the community feed.
 export async function POST(req: Request) {
   const b = await req.json().catch(() => null);
-  const user = await currentUser().catch(() => null);
-  if (!user) return bad("Log in to share looks.", 401);
-  const author = user.username;
-  if (!isImg(b?.image) || !isGarments(b?.garments)) return bad("Nothing to share yet.");
-  const refs = (Array.isArray(b.refs) ? b.refs : []).filter((r: unknown) => isImg(r)).slice(0, 8);
-  // Keep only the fields we know, so the feed never renders arbitrary client data.
-  const garments = b.garments.map((g: Record<string, unknown>) => ({
-    category: String(g.category).slice(0, 40),
-    description: String(g.description).slice(0, 300),
-    color: String(g.color).slice(0, 60),
-    price_usd: Math.max(0, Number(g.price_usd) || 0),
-    price_is_estimate: g.price_is_estimate !== false,
-    url: typeof g.url === "string" && /^https:\/\//.test(g.url) ? g.url.slice(0, 600) : undefined,
-  }));
-
-  const client = await db.connect();
+  const id = Number(b?.id);
+  if (!Number.isInteger(id)) return bad("Nothing to share yet.");
   try {
-    const embedding = await embed(describe(garments));
-    await client.query("BEGIN");
-    const { rows } = await client.query(
-      `INSERT INTO looks (author, image, image_mime, garments, total_usd, embedding)
-       VALUES ($1, $2, $3, $4, $5, $6::vector) RETURNING id`,
-      [author, Buffer.from(b.image.data, "base64"), b.image.mime, JSON.stringify(garments), totalUsd(garments), toVector(embedding)],
-    );
-    for (const r of refs)
-      await client.query("INSERT INTO garment_refs (look_id, image, mime) VALUES ($1, $2, $3)", [
-        rows[0].id, Buffer.from(r.data, "base64"), r.mime,
-      ]);
-    await client.query("COMMIT");
-    return Response.json({ id: rows[0].id });
+    const user = await currentUser();
+    if (!user) return bad("Log in to share looks.", 401);
+    const look = await db.query("SELECT garments FROM looks WHERE id = $1 AND user_id = $2", [id, user.id]);
+    if (!look.rowCount) return bad("Unknown look", 404);
+    // Sharing must not fail just because the embedding service is busy; the look is then left out of similar-look search.
+    const embedding = await embed(describe(look.rows[0].garments)).then(toVector, () => null);
+    await db.query("UPDATE looks SET shared = true, embedding = coalesce($2::vector, embedding) WHERE id = $1", [id, embedding]);
+    return Response.json({ id, shared: true });
   } catch (e) {
-    await client.query("ROLLBACK").catch(() => {});
     return fail(e);
-  } finally {
-    client.release();
   }
 }

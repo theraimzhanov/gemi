@@ -8,7 +8,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   try {
     const user = await currentUser();
     if (!user) return bad("Log in to like looks.", 401);
-    const look = await db.query("SELECT 1 FROM looks WHERE id = $1", [id]);
+    const look = await db.query("SELECT 1 FROM looks WHERE id = $1 AND shared", [id]);
     if (!look.rowCount) return bad("Unknown look", 404);
     // One like per person per look.
     const r = await db.query(

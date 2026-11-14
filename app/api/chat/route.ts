@@ -1,8 +1,10 @@
+import { currentUser } from "@/lib/auth";
 import { db, toVector } from "@/lib/db";
 import {
   editLook, embed, extractGarments, generateTryOn, routeIntent, shopGarments, totalUsd,
   type Garment, type Img, type Intent,
 } from "@/lib/gemini";
+import { saveLook } from "@/lib/looks";
 import { bad, fail, isGarments, isImg } from "@/lib/validate";
 
 export const maxDuration = 120;
@@ -21,12 +23,14 @@ export async function POST(req: Request) {
   if (!outfit && !text.trim() && !audio) return bad("Add an outfit photo, type a request, or record one.");
 
   try {
+    const user = await currentUser();
+    if (!user) return bad("Log in to use the studio.", 401);
     const intent: Intent =
       outfit && !text.trim() && !audio
         ? { tool: "steal_look" }
         : await routeIntent({ text, audio, hasOutfitPhoto: !!outfit, hasCurrentLook: !!current });
-    const look = (image: Img, garments: Garment[], refs: Img[]) =>
-      Response.json({ intent, image, garments, refs, total_usd: totalUsd(garments) });
+    const look = async (image: Img, garments: Garment[], refs: Img[]) =>
+      Response.json({ intent, id: await saveLook(user, image, garments, refs), image, garments, refs, total_usd: totalUsd(garments) });
 
     switch (intent.tool) {
       case "steal_look": {
@@ -56,7 +60,7 @@ export async function POST(req: Request) {
       case "find_similar": {
         const { rows } = await db.query(
           `SELECT id, author, garments, total_usd FROM looks
-           WHERE embedding IS NOT NULL ORDER BY embedding <=> $1::vector LIMIT 6`,
+           WHERE shared AND embedding IS NOT NULL ORDER BY embedding <=> $1::vector LIMIT 6`,
           [toVector(await embed(intent.query))],
         );
         return Response.json({ intent, similar: rows });

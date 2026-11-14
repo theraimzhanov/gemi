@@ -1,9 +1,9 @@
 // Browser-only helpers shared by the studio and feed pages.
 import type { Garment, Img } from "./gemini";
 
-export type Look = { image: Img; garments: Garment[]; refs: Img[]; total_usd: number; intent?: { tool: string } };
+export type Look = { id?: number; shared?: boolean; image: Img; garments: Garment[]; refs: Img[]; total_usd: number; intent?: { tool: string } };
 export type FeedLook = {
-  id: number; author: string; garments: Garment[]; total_usd: string | number; likes?: number; tryons?: number;
+  id: number; author: string; garments: Garment[]; total_usd: string | number; likes?: number; tryons?: number; shared?: boolean; liked?: boolean;
 };
 
 export const src = (i: Img) => `data:${i.mime};base64,${i.data}`;
