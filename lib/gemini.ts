@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const FLASH = "gemini-3.8-flash";
+const FLASH_FALLBACK = "gemini-3.6-flash";
 const IMAGE = "gemini-nano-banana-2.1";
 const EMBED = "gemini-embedding-2";
 
@@ -36,7 +37,7 @@ type Interaction = {
 
 export class BusyError extends Error {
   constructor() {
-    super("Gemini is overloaded right now and did not answer in 90 seconds. Please try again in a minute.");
+    super("Gemini is overloaded right now and did not answer in time. Please try again in a minute.");
   }
 }
 
@@ -46,13 +47,19 @@ function create(params: Record<string, unknown>): Promise<Interaction> {
   // The v1 API wants content parts wrapped in a user_input step.
   if (Array.isArray(params.input)) params = { ...params, input: [{ type: "user_input", content: params.input }] };
   // The SDK's param union is very wide; our call shapes are checked by scripts/smoke.ts instead.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const call = client.interactions.create(params as any) as Promise<Interaction>;
-  // The SDK retries overloaded (503) responses silently for minutes; give up with a clear message instead.
-  return Promise.race([
-    call,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new BusyError()), 90_000).unref?.()),
-  ]);
+  const attempt = (p: Record<string, unknown>, ms: number) =>
+    // The SDK retries overloaded (503) responses silently for minutes; give up with a clear message instead.
+    Promise.race([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      client!.interactions.create(p as any) as Promise<Interaction>,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new BusyError()), ms).unref?.()),
+    ]);
+  if (params.model !== FLASH) return attempt(params, 120_000);
+  // When the newest Flash model is overloaded, the previous stable one usually still answers.
+  return attempt(params, 30_000).catch((e) => {
+    if (!(e instanceof BusyError) && e?.status !== 503 && e?.status !== 429) throw e;
+    return attempt({ ...params, model: FLASH_FALLBACK }, 90_000);
+  });
 }
 
 const text = (t: string) => ({ type: "text", text: t });
