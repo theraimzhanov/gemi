@@ -1,4 +1,4 @@
-import type { Garment, Img } from "./gemini";
+import { BusyError, type Garment, type Img } from "./gemini";
 
 // ~6 MB of base64 per file; the client downsizes photos well below this.
 const MAX_B64 = 8_000_000;
@@ -22,5 +22,6 @@ export const bad = (message: string, status = 400) => Response.json({ error: mes
 
 export function fail(e: unknown) {
   console.error(e);
+  if (e instanceof BusyError || (e as { status?: number })?.status === 503) return bad(new BusyError().message, 503);
   return bad("Something went wrong generating that. Please try again.", 500);
 }

@@ -34,6 +34,12 @@ type Interaction = {
   steps?: { type: string; name?: string; arguments?: Record<string, unknown> }[];
 };
 
+export class BusyError extends Error {
+  constructor() {
+    super("Gemini is overloaded right now and did not answer in 90 seconds. Please try again in a minute.");
+  }
+}
+
 let client: GoogleGenAI | undefined;
 function create(params: Record<string, unknown>): Promise<Interaction> {
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -41,7 +47,12 @@ function create(params: Record<string, unknown>): Promise<Interaction> {
   if (Array.isArray(params.input)) params = { ...params, input: [{ type: "user_input", content: params.input }] };
   // The SDK's param union is very wide; our call shapes are checked by scripts/smoke.ts instead.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return client.interactions.create(params as any) as Promise<Interaction>;
+  const call = client.interactions.create(params as any) as Promise<Interaction>;
+  // The SDK retries overloaded (503) responses silently for minutes; give up with a clear message instead.
+  return Promise.race([
+    call,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new BusyError()), 90_000).unref?.()),
+  ]);
 }
 
 const text = (t: string) => ({ type: "text", text: t });
