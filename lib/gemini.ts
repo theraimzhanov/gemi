@@ -37,6 +37,8 @@ type Interaction = {
 let client: GoogleGenAI | undefined;
 function create(params: Record<string, unknown>): Promise<Interaction> {
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // The v1 API wants content parts wrapped in a user_input step.
+  if (Array.isArray(params.input)) params = { ...params, input: [{ type: "user_input", content: params.input }] };
   // The SDK's param union is very wide; our call shapes are checked by scripts/smoke.ts instead.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return client.interactions.create(params as any) as Promise<Interaction>;
