@@ -52,15 +52,15 @@ export default function Feed() {
       <Header />
       <main className="mx-auto w-full max-w-5xl space-y-4 p-4">
         <div className="flex items-center gap-2">
-          <h1 className="mr-auto text-lg font-semibold">Community looks</h1>
+          <h1 className="mr-auto text-3xl font-semibold tracking-tight">Community looks</h1>
           {(["trending", "new"] as const).map((s) => (
             <button key={s} className={btnGhost} aria-pressed={sort === s} onClick={() => setSort(s)}>
               {s === "trending" ? "Trending" : "Newest"}
             </button>
           ))}
         </div>
-        <p role="status" aria-live="polite" className="min-h-5 text-sm text-fuchsia-700 dark:text-fuchsia-400">{status}</p>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <p role="status" aria-live="polite" className="min-h-5 text-sm text-fuchsia-300">{status}</p>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {looks.map((l) => <LookCard key={l.id} look={l} busy={busy} onTry={() => tryOn(l.id)} onLike={() => like(l.id)} />)}
         </div>
       </main>
