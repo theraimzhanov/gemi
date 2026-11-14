@@ -44,3 +44,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 ALTER TABLE look_events ADD COLUMN IF NOT EXISTS user_id bigint;
+
+-- Login is by email; the username is the public name shown on shared looks. Demo accounts have no email.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email);

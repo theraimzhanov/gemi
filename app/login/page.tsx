@@ -19,7 +19,7 @@ export default function Login() {
     setBusy(true);
     setError("");
     try {
-      await post("/api/auth", { mode, username: form.get("username"), password: form.get("password") });
+      await post("/api/auth", { mode, email: form.get("email"), username: form.get("username"), password: form.get("password") });
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -34,10 +34,16 @@ export default function Login() {
         <form onSubmit={submit} className="fade-up w-full max-w-sm space-y-4 rounded-3xl border border-white/10 bg-white/[0.07] p-6 backdrop-blur">
           <h1 className="text-2xl font-semibold tracking-tight">{register ? "Create your account" : "Welcome back"}</h1>
           <div className="space-y-1">
-            <label htmlFor="username" className="text-sm text-zinc-300">Username</label>
-            <input id="username" name="username" required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]+" autoComplete="username" className={field} />
-            {register && <p className="text-xs text-zinc-400">3–20 letters, numbers or underscores. Shown on looks you share.</p>}
+            <label htmlFor="email" className="text-sm text-zinc-300">Email</label>
+            <input id="email" name="email" type="email" required maxLength={254} autoComplete="email" className={field} />
           </div>
+          {register && (
+            <div className="space-y-1">
+              <label htmlFor="username" className="text-sm text-zinc-300">Username</label>
+              <input id="username" name="username" required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]+" autoComplete="nickname" className={field} />
+              <p className="text-xs text-zinc-400">3–20 letters, numbers or underscores. Shown on looks you share.</p>
+            </div>
+          )}
           <div className="space-y-1">
             <label htmlFor="password" className="text-sm text-zinc-300">Password</label>
             <input id="password" name="password" type="password" required minLength={register ? 8 : 1} maxLength={200} autoComplete={register ? "new-password" : "current-password"} className={field} />

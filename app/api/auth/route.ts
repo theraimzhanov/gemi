@@ -15,24 +15,26 @@ export async function GET() {
 export async function POST(req: Request) {
   const b = await req.json().catch(() => null);
   const username = typeof b?.username === "string" ? b.username.trim().toLowerCase() : "";
+  const email = typeof b?.email === "string" ? b.email.trim().toLowerCase() : "";
   const password = typeof b?.password === "string" ? b.password : "";
   try {
     if (b?.mode === "register") {
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad("Enter a valid email address.");
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return bad("Username must be 3–20 letters, numbers or underscores.");
       if (password.length < 8 || password.length > 200) return bad("Password must be at least 8 characters.");
       const r = await db.query(
-        "INSERT INTO users (username, password_hash) VALUES ($1, $2) ON CONFLICT (username) DO NOTHING RETURNING id",
-        [username, await hashPassword(password)],
+        "INSERT INTO users (email, username, password_hash) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id",
+        [email, username, await hashPassword(password)],
       );
-      if (!r.rowCount) return bad("That username is taken.", 409);
+      if (!r.rowCount) return bad("That email or username is already in use.", 409);
       await createSession(r.rows[0].id);
       return Response.json({ user: { id: r.rows[0].id, username } });
     }
-    const r = await db.query("SELECT id, password_hash FROM users WHERE username = $1", [username]);
+    const r = await db.query("SELECT id, username, password_hash FROM users WHERE email = $1", [email]);
     if (!r.rowCount || !(await verifyPassword(password, r.rows[0].password_hash)))
-      return bad("Wrong username or password.", 401);
+      return bad("Wrong email or password.", 401);
     await createSession(r.rows[0].id);
-    return Response.json({ user: { id: r.rows[0].id, username } });
+    return Response.json({ user: { id: r.rows[0].id, username: r.rows[0].username } });
   } catch (e) {
     return fail(e);
   }
