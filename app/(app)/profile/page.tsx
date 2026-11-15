@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { display } from "../../styles";
 import { ProfileControls } from "./controls";
 
+// Reads the login cookie and the user's own counts on every request.
+export const instant = false;
+
 export default async function Profile() {
   const user = await currentUser();
   if (!user) redirect("/login");

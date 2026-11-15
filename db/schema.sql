@@ -53,3 +53,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email);
 ALTER TABLE looks ADD COLUMN IF NOT EXISTS user_id bigint REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE looks ADD COLUMN IF NOT EXISTS shared boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS looks_user_idx ON looks (user_id, created_at DESC);
+
+-- One row per generation request. The server sets it to done or failed; the page watches it.
+CREATE TABLE IF NOT EXISTS jobs (
+  id          bigserial PRIMARY KEY,
+  user_id     bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status      text NOT NULL DEFAULT 'working' CHECK (status IN ('working', 'done', 'failed')),
+  result      jsonb,
+  error       text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);

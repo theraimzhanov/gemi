@@ -50,6 +50,7 @@ export class PictureCreditError extends Error {
 let client: GoogleGenAI | undefined;
 function create(params: Record<string, unknown>): Promise<Interaction> {
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const original = params;
   // The v1 API wants content parts wrapped in a user_input step.
   if (Array.isArray(params.input)) params = { ...params, input: [{ type: "user_input", content: params.input }] };
   // The SDK's param union is very wide; our call shapes are checked by scripts/smoke.ts instead.
@@ -62,10 +63,57 @@ function create(params: Record<string, unknown>): Promise<Interaction> {
     ]);
   if (params.model !== FLASH) return attempt(params, 120_000);
   // When the newest Flash model is overloaded, the previous stable one usually still answers.
-  return attempt(params, 30_000).catch((e) => {
-    if (!(e instanceof BusyError) && e?.status !== 503 && e?.status !== 429) throw e;
-    return attempt({ ...params, model: FLASH_FALLBACK }, 90_000);
+  const google = () =>
+    attempt(params, 30_000).catch((e) => {
+      if (!(e instanceof BusyError) && e?.status !== 503 && e?.status !== 429) throw e;
+      return attempt({ ...params, model: FLASH_FALLBACK }, 90_000);
+    });
+  // Google's free tier is often slow or over quota, so text calls go to the same Gemini model on OpenRouter
+  // first when a key is set. Any failure there (including no credits) falls back to Google.
+  if (!process.env.OPENROUTER_API_KEY) return google();
+  return flashOnOpenRouter(original).catch((e) => {
+    console.error("OpenRouter text call failed, using Google:", String(e?.message ?? e).slice(0, 200));
+    return google();
   });
+}
+
+type Part = { type: string; text?: string; mime_type?: string; data?: string };
+type Tool = { type: string; name?: string; description?: string; parameters?: unknown };
+
+// Translates one of our Flash calls into OpenRouter's chat format and its answer back into ours.
+async function flashOnOpenRouter(p: Record<string, unknown>): Promise<Interaction> {
+  const input = p.input as string | Part[];
+  const content = typeof input === "string" ? input : input.map((x) =>
+    x.type === "image" ? { type: "image_url", image_url: { url: `data:${x.mime_type};base64,${x.data}` } }
+    : x.type === "audio" ? { type: "input_audio", input_audio: { data: x.data, format: "wav" } }
+    : x);
+  const tools = (p.tools as Tool[] | undefined) ?? [];
+  const functions = tools.filter((t) => t.type === "function")
+    .map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
+  const schema = (p.response_format as { schema?: unknown } | undefined)?.schema;
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      // ":online" turns on web search, our stand-in for Google Search grounding.
+      model: `google/${FLASH}${tools.some((t) => t.type === "google_search") ? ":online" : ""}`,
+      messages: [
+        ...(p.system_instruction ? [{ role: "system", content: p.system_instruction }] : []),
+        { role: "user", content },
+      ],
+      ...(functions.length ? { tools: functions } : {}),
+      ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "result", schema } } } : {}),
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const body = await res.json().catch(() => null);
+  const message = body?.choices?.[0]?.message;
+  if (!res.ok || !message) throw Object.assign(new Error(body?.error?.message ?? `OpenRouter answered ${res.status}`), { status: res.status });
+  const call = message.tool_calls?.[0]?.function;
+  return {
+    output_text: typeof message.content === "string" ? message.content : "",
+    steps: call ? [{ type: "function_call", name: call.name, arguments: JSON.parse(call.arguments || "{}") }] : [],
+  };
 }
 
 const text = (t: string) => ({ type: "text", text: t });

@@ -59,6 +59,22 @@ export async function post<T>(url: string, body: unknown): Promise<T> {
   return data;
 }
 
+// Starts a generation job and waits for it. The server answers at once with a job id; the result is read from
+// the job row in Tiger Data, so a slow picture is never cut off by a request time limit.
+export async function postJob<T>(url: string, body: unknown): Promise<T> {
+  const { job } = await post<{ job: number }>(url, body);
+  for (let tries = 0; tries < 90; tries++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`/api/jobs/${job}`).catch(() => null);
+    if (!res) continue; // a dropped connection: keep waiting, the job carries on without us
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "Request failed");
+    if (data.status === "done") return data.reply;
+    if (data.status === "failed") throw new Error(data.error ?? "Something went wrong making that. Try again.");
+  }
+  throw new Error("That is taking longer than usual. Look in My looks in a minute; it will appear there when it is ready.");
+}
+
 // Browsers record webm/opus, which Gemini does not list as supported; re-encode to 16 kHz mono WAV.
 export async function blobToWav(blob: Blob): Promise<Img> {
   const ctx = new AudioContext({ sampleRate: 16000 });

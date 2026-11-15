@@ -18,11 +18,19 @@ export function isGarments(x: unknown): x is Garment[] {
   );
 }
 
+// A problem the user can fix; its message is safe to show as written.
+export class UserError extends Error {}
+
+// The message a user may see for an error. Anything unexpected gets a generic line so internals never leak.
+export function publicMessage(e: unknown): string {
+  if (e instanceof UserError || e instanceof PictureCreditError || e instanceof BusyError) return e.message;
+  if ((e as { status?: number })?.status === 503) return new BusyError().message;
+  return "Something went wrong making that. Try again.";
+}
+
 export const bad = (message: string, status = 400) => Response.json({ error: message }, { status });
 
 export function fail(e: unknown) {
   console.error(e);
-  if (e instanceof PictureCreditError) return bad(e.message, 503);
-  if (e instanceof BusyError || (e as { status?: number })?.status === 503) return bad(new BusyError().message, 503);
-  return bad("Something went wrong generating that. Please try again.", 500);
+  return bad(publicMessage(e), e instanceof UserError ? 400 : e instanceof PictureCreditError || e instanceof BusyError ? 503 : 500);
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setHandoff, loadSelfie, post, type FeedLook, type Look } from "@/lib/client";
+import { setHandoff, loadSelfie, post, postJob, type FeedLook, type Look } from "@/lib/client";
 import { describeLook, display, Icon, LookCard } from "../../ui";
 
 export default function Community() {
@@ -13,11 +13,15 @@ export default function Community() {
 
   useEffect(() => {
     let live = true;
-    fetch(`/api/looks?sort=${sort}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((rows: FeedLook[]) => live && setLooks(rows))
-      .catch(() => live && setStatus("The feed did not load. Check your connection and reload the page."));
-    return () => { live = false; };
+    const load = () =>
+      fetch(`/api/looks?sort=${sort}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((rows: FeedLook[]) => live && setLooks(rows))
+        .catch(() => live && setLooks((ls) => { if (!ls) setStatus("The feed did not load. Check your connection and reload the page."); return ls; }));
+    load();
+    // Re-read the feed so newly shared looks and likes appear without a reload.
+    const timer = setInterval(() => { if (!document.hidden) load(); }, 15000);
+    return () => { live = false; clearInterval(timer); };
   }, [sort]);
 
   async function tryOn(id: number) {
@@ -26,7 +30,7 @@ export default function Community() {
     setBusy(id);
     setStatus("Dressing you in that look. This can take up to a minute.");
     try {
-      setHandoff(await post<Look>(`/api/looks/${id}/tryon`, { selfie }));
+      setHandoff(await postJob<Look>(`/api/looks/${id}/tryon`, { selfie }));
       router.push("/studio");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Something went wrong. Try again.");

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Img } from "@/lib/gemini";
-import { blobToWav, fileToImg, takeHandoff, loadSelfie, post, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
+import { blobToWav, fileToImg, takeHandoff, loadSelfie, post, postJob, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
 import { btn, btnGhost, describeLook, display, Icon, iconBtn, LookCard, Receipt } from "../../ui";
 import { useMe } from "../shell";
 
@@ -22,7 +22,7 @@ type Msg =
 const toMsg = (r: Reply): Msg => ({
   from: "gemi",
   note: r.intent.message ?? TOOL_LABEL[r.intent.tool] ?? "Done",
-  look: r.image && r.garments ? { id: r.id, image: r.image, garments: r.garments, refs: r.refs ?? [], total_usd: r.total_usd ?? 0 } : undefined,
+  look: r.image && r.garments ? { id: r.id, shared: r.shared, image: r.image, garments: r.garments, refs: r.refs ?? [], total_usd: r.total_usd ?? 0 } : undefined,
   similar: r.similar,
 });
 
@@ -73,7 +73,7 @@ export default function Chat() {
     const sent = { selfie, outfit, text, audio, current };
     setMsgs((m) => [...m, { from: "you", text: text.trim(), outfit: outfit ?? undefined, voice: !!audio }]);
     setText(""); setAudio(null); setOutfit(null);
-    run(() => post<Reply>("/api/chat", sent));
+    run(() => postJob<Reply>("/api/chat", sent));
   }
 
   async function toggleMic() {
@@ -108,7 +108,7 @@ export default function Chat() {
   const tryShared = (id: number) => {
     if (!selfie) return say("Add your photo first, using the person button below.");
     setMsgs((m) => [...m, { from: "you", text: "Try this look on me" }]);
-    run(() => post<Reply>(`/api/looks/${id}/tryon`, { selfie }));
+    run(() => postJob<Reply>(`/api/looks/${id}/tryon`, { selfie }));
   };
 
   const pick = (set: (i: Img) => void, after?: (i: Img) => void) => async (e: React.ChangeEvent<HTMLInputElement>) => {
