@@ -75,6 +75,40 @@ Requires Node 24 or newer.
    npm run dev
    ```
 
+## Screenshots
+
+**Landing page**
+
+![Landing page: Try it on before you buy it](docs/screenshots/01-landing.webp)
+
+**The Odyssey theme: five things the agent does on its own**
+
+![Gemi makes the odyssey: Athena, the voyage, Ithaca, Mentor, Penelope](docs/screenshots/02-odyssey.png)
+
+**Copy a whole outfit from one photo, and shop with a budget**
+
+![Their outfit plus you equals you wearing it](docs/screenshots/03-copy-outfit.png)
+
+**Wear what the community is wearing**
+
+![Community looks with prices and a Try on me button](docs/screenshots/04-community-section.png)
+
+**The agent runs a planned search and offers real products**
+
+![Chat: planned search for a job interview with two sneaker options](docs/screenshots/05-shopping-choices.png)
+
+**Try-on result with the receipt**
+
+![Chat: the selected items tried on, with a priced receipt](docs/screenshots/06-try-on-result.webp)
+
+**Community feed**
+
+![Community feed with For you, Trending and Newest tabs](docs/screenshots/07-community.webp)
+
+**My looks**
+
+![My looks: three saved looks, private and shared](docs/screenshots/08-my-looks.webp)
+
 ## License
 
 [MIT](LICENSE)
