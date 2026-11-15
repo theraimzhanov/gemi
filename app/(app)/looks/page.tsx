@@ -41,7 +41,7 @@ export default function MyLooks() {
           <LookCard key={l.id} total={l.total_usd} badge={l.shared ? "Shared" : "Private"}
             author={l.shared ? `${l.likes ?? 0} likes, ${l.tryons ?? 0} try-ons` : undefined}
             // eslint-disable-next-line @next/next/no-img-element -- served from our own DB route
-            image={<img src={`/api/img/${l.id}`} alt={`You wearing ${describeLook(l.garments)}`} className="w-full" loading="lazy" />}>
+            image={<img src={`/api/img/${l.id}`} alt={`You wearing ${describeLook(l.garments)}`} width={600} height={800} className="h-auto w-full" loading="lazy" />}>
             {!l.shared && (
               <button className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2 text-sm font-semibold transition-colors hover:bg-tag" onClick={() => share(l.id)}>
                 <Icon name="share" className="size-4" /> Share to community

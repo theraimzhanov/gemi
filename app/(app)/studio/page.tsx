@@ -174,7 +174,7 @@ export default function Chat() {
                   {m.similar.map((s) => (
                     <LookCard key={s.id} author={s.author} total={s.total_usd}
                       // eslint-disable-next-line @next/next/no-img-element
-                      image={<img src={`/api/img/${s.id}`} alt={`Look by ${s.author}: ${describeLook(s.garments)}`} className="w-full" />}>
+                      image={<img src={`/api/img/${s.id}`} alt={`Look by ${s.author}: ${describeLook(s.garments)}`} width={600} height={800} className="h-auto w-full" />}>
                       <button className="flex-1 rounded-full bg-white py-2 text-sm font-semibold" disabled={busy} onClick={() => tryShared(s.id)}>Try on me</button>
                     </LookCard>
                   ))}

@@ -67,7 +67,7 @@ export default function Community() {
         {looks?.map((l) => (
           <LookCard key={l.id} author={l.author} total={l.total_usd}
             // eslint-disable-next-line @next/next/no-img-element -- served from our own DB route
-            image={<img src={`/api/img/${l.id}`} alt={`Look by ${l.author}: ${describeLook(l.garments)}`} className="w-full" loading="lazy" />}>
+            image={<img src={`/api/img/${l.id}`} alt={`Look by ${l.author}: ${describeLook(l.garments)}`} width={600} height={800} className="h-auto w-full" loading="lazy" />}>
             <button className="flex-1 rounded-full bg-white py-2 text-sm font-semibold transition-colors hover:bg-tag disabled:opacity-60" disabled={busy !== null} onClick={() => tryOn(l.id)}>
               {busy === l.id ? "Dressing you…" : "Try on me"}
             </button>
