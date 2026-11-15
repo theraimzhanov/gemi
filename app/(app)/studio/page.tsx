@@ -4,6 +4,8 @@ import type { Img } from "@/lib/gemini";
 import { blobToWav, fileToImg, takeHandoff, loadSelfie, post, postJob, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
 import { btn, btnGhost, describeLook, display, Icon, iconBtn, LookCard, Receipt } from "../../ui";
 import { useMe } from "../shell";
+import { MAX_PHOTOS, MAX_UPLOAD_B64, type Shopping } from "@/lib/styling";
+import { Choices } from "./choices";
 
 const TOOL_LABEL: Record<string, string> = {
   steal_look: "Copied the outfit from your photo",
@@ -14,22 +16,24 @@ const TOOL_LABEL: Record<string, string> = {
 };
 const IDEAS = ["Find a red dress under $100", "I only need a blue top", "Show me looks like streetwear with white sneakers"];
 
-type Reply = Partial<Look> & { intent: { tool: string; message?: string }; similar?: FeedLook[] };
+type Reply = Partial<Look> & { intent: { tool: string; message?: string }; similar?: FeedLook[]; shopping?: Shopping & { job: number } };
 type Msg =
-  | { from: "you"; text: string; outfit?: Img; voice?: boolean }
-  | { from: "gemi"; note: string; look?: Look; similar?: FeedLook[] };
+  | { from: "you"; text: string; outfits?: Img[]; voice?: boolean }
+  | { from: "gemi"; note: string; look?: Look; similar?: FeedLook[]; shopping?: Shopping & { job: number } };
 
 const toMsg = (r: Reply): Msg => ({
   from: "gemi",
   note: r.intent.message ?? TOOL_LABEL[r.intent.tool] ?? "Done",
   look: r.image && r.garments ? { id: r.id, shared: r.shared, image: r.image, garments: r.garments, refs: r.refs ?? [], total_usd: r.total_usd ?? 0 } : undefined,
   similar: r.similar,
+  shopping: r.shopping,
 });
 
 export default function Chat() {
   const me = useMe();
   const [selfie, setSelfie] = useState<Img | null>(null);
-  const [outfit, setOutfit] = useState<Img | null>(null);
+  const [outfits, setOutfits] = useState<Img[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [text, setText] = useState("");
   const [audio, setAudio] = useState<Img | null>(null);
   const [recording, setRecording] = useState(false);
@@ -68,11 +72,14 @@ export default function Chat() {
     }
   }
 
-  const canSend = !busy && (!!outfit || !!text.trim() || !!audio);
+  const canSend = !busy && !uploading && !recording && (!!outfits.length || !!text.trim() || !!audio);
   function send() {
-    const sent = { selfie, outfit, text, audio, current };
-    setMsgs((m) => [...m, { from: "you", text: text.trim(), outfit: outfit ?? undefined, voice: !!audio }]);
-    setText(""); setAudio(null); setOutfit(null);
+    if (!canSend) return;
+    if ([...outfits, selfie, audio].reduce((sum, image) => sum + (image?.data.length ?? 0), 0) > MAX_UPLOAD_B64)
+      return say("These attachments are too large together. Use fewer photos or a shorter recording.");
+    const sent = { selfie, outfits, text, audio, currentId: current?.id };
+    setMsgs((m) => [...m, { from: "you", text: text.trim(), outfits, voice: !!audio }]);
+    setText(""); setAudio(null); setOutfits([]);
     run(() => postJob<Reply>("/api/chat", sent));
   }
 
@@ -86,10 +93,12 @@ export default function Chat() {
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         setRecording(false);
-        setAudio(await blobToWav(new Blob(chunks)));
+        try { setAudio(await blobToWav(new Blob(chunks))); }
+        catch { say("The recording could not be read. Please record again or type your request."); }
       };
       recorder.current = rec;
       rec.start();
+      setTimeout(() => { if (rec.state === "recording") rec.stop(); }, 30_000);
       setRecording(true);
     } catch {
       say("The microphone is blocked in this browser. Type your request instead.");
@@ -115,23 +124,45 @@ export default function Chat() {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow picking the same file again
     if (!file) return;
-    const img = await fileToImg(file);
-    set(img);
-    after?.(img);
+    setUploading(true);
+    try {
+      const img = await fileToImg(file);
+      set(img);
+      after?.(img);
+    } catch { say("That photo could not be opened. Try a JPG, PNG or WebP image."); }
+    finally { setUploading(false); }
   };
+
+  async function pickOutfits(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (outfits.length + files.length > MAX_PHOTOS) return say(`Attach up to ${MAX_PHOTOS} photos at a time.`);
+    setUploading(true);
+    try {
+      const images = await Promise.all(files.map((file) => fileToImg(file, 768)));
+      setOutfits((previous) => [...previous, ...images]);
+    } catch { say("One of those photos could not be opened. Try JPG, PNG or WebP images."); }
+    finally { setUploading(false); }
+  }
+
+  function confirm(shopping: Shopping & { job: number }, indices: number[]) {
+    if (!selfie && !current) return say("Add your photo first, using the person button below.");
+    setMsgs((messages) => [...messages, { from: "you", text: "Try these selected items on me" }]);
+    run(() => postJob<Reply>("/api/chat", { selfie, currentId: current?.id, selection: { job: shopping.job, indices } }));
+  }
 
   const chip = "flex items-center gap-2 rounded-full bg-mist py-1 pl-1 pr-2.5 text-xs font-medium";
 
   return (
     <>
-      <input ref={selfieInput} type="file" accept="image/*" className="hidden" aria-label="Upload your photo" onChange={pick(setSelfie, saveSelfie)} />
-      <input ref={outfitInput} type="file" accept="image/*" className="hidden" aria-label="Upload an outfit photo" onChange={pick(setOutfit)} />
+      <input ref={selfieInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload your photo" onChange={pick(setSelfie, saveSelfie)} />
+      <input ref={outfitInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" multiple aria-label="Upload product or outfit photos" onChange={pickOutfits} />
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pb-6 pt-8">
         {msgs.length === 0 && (
           <div className="m-auto w-full max-w-xl py-10">
             <h1 className={`${display} text-5xl leading-none md:text-6xl`}>What are we wearing today, {me.username}?</h1>
-            <p className="mt-4 text-lg text-mute">Attach an outfit photo to copy it, or describe what you want. You can also say it out loud.</p>
+            <p className="mt-4 text-lg text-mute">I’m Gemi, your AI stylist. Attach product or outfit photos, add instructions, or describe what you want to shop for. You can also say it out loud.</p>
             {!selfie && (
               <button className={`${btn} mt-6`} onClick={() => selfieInput.current?.click()}><Icon name="user" /> Add your photo to start</button>
             )}
@@ -147,14 +178,20 @@ export default function Chat() {
           m.from === "you" ? (
             <div key={i} className="pop ml-auto flex max-w-[80%] flex-col items-end gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {m.outfit && <img src={src(m.outfit)} alt="Outfit photo you attached" className="w-40 rounded-3xl" />}
+              {m.outfits?.map((photo, index) => <img key={index} src={src(photo)} alt={`Reference photo ${index + 1} you attached`} className="w-40 rounded-3xl" />)}
               {(m.text || m.voice) && (
                 <p className="rounded-3xl rounded-br-md bg-ink px-5 py-3 text-white">{m.text || "Voice request"}</p>
               )}
             </div>
           ) : (
             <div key={i} className="pop max-w-full space-y-3">
+              <div className="flex items-center gap-1 text-sm font-semibold">
+                {/* eslint-disable-next-line @next/next/no-img-element -- local vector brand mark */}
+                <img src="/icon.svg" alt="" width={32} height={32} className="size-8" />
+                Gemi
+              </div>
               <p className="w-fit rounded-3xl rounded-bl-md bg-mist px-5 py-3">{m.note}</p>
+              {m.shopping && <Choices shopping={m.shopping} busy={busy || uploading} onConfirm={(indices) => confirm(m.shopping!, indices)} />}
               {m.look && (
                 <div className="grid gap-5 rounded-[2rem] border border-line p-4 sm:grid-cols-[minmax(0,15rem)_1fr]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -189,7 +226,7 @@ export default function Chat() {
         {busy && (
           <p className="pulse-dots flex w-fit items-center gap-1.5 rounded-3xl rounded-bl-md bg-mist px-5 py-4" role="status">
             <span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" />
-            <span className="sr-only">Gemi is styling you. This can take up to a minute.</span>
+            <span className="sr-only">Gemi is styling you. This can take a few minutes.</span>
           </p>
         )}
         <div ref={end} />
@@ -197,15 +234,15 @@ export default function Chat() {
 
       <div className="sticky bottom-16 z-10 bg-gradient-to-t from-white via-white to-transparent px-4 pb-4 pt-6 md:bottom-0">
         <div className="mx-auto w-full max-w-3xl rounded-[1.75rem] border border-line bg-white p-2 shadow-[0_8px_30px_rgb(27_23_34/0.08)] focus-within:border-ink">
-          {(outfit || audio) && (
+          {(outfits.length > 0 || audio) && (
             <div className="flex flex-wrap gap-2 px-2 pt-1">
-              {outfit && (
-                <span className={chip}>
+              {outfits.map((photo, index) => (
+                <span key={index} className={chip}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src(outfit)} alt="" className="size-7 rounded-full object-cover" /> Outfit to copy
-                  <button onClick={() => setOutfit(null)} aria-label="Remove outfit photo"><Icon name="close" className="size-3.5" /></button>
+                  <img src={src(photo)} alt="" className="size-7 rounded-full object-cover" /> Photo {index + 1}
+                  <button onClick={() => setOutfits((photos) => photos.filter((_, i) => i !== index))} aria-label={`Remove reference photo ${index + 1}`}><Icon name="close" className="size-3.5" /></button>
                 </span>
-              )}
+              ))}
               {audio && (
                 <span className={`${chip} pl-2.5`}>
                   <Icon name="mic" className="size-3.5" /> Voice request
@@ -214,6 +251,7 @@ export default function Chat() {
               )}
             </div>
           )}
+          {uploading && <p role="status" className="px-3 text-sm text-mute">Preparing photos…</p>}
           <label htmlFor="ask" className="sr-only">Describe the look you want</label>
           <textarea
             id="ask" ref={promptBox} rows={1} value={text}
@@ -223,8 +261,8 @@ export default function Chat() {
             className="block w-full resize-none bg-transparent px-3 py-2 text-base placeholder:text-mute focus:outline-none"
           />
           <div className="flex items-center gap-1">
-            <button className={iconBtn} onClick={() => outfitInput.current?.click()} disabled={busy} aria-label="Attach an outfit photo to copy" title="Attach an outfit photo"><Icon name="plus" /></button>
-            <button className={iconBtn} onClick={() => selfieInput.current?.click()} disabled={busy} aria-label={selfie ? "Change your photo" : "Add your photo"} title="Your photo">
+            <button className={iconBtn} onClick={() => outfitInput.current?.click()} disabled={busy || uploading} aria-label="Attach product or outfit photos" title="Attach photos"><Icon name="plus" /></button>
+            <button className={iconBtn} onClick={() => selfieInput.current?.click()} disabled={busy || uploading} aria-label={selfie ? "Change your photo" : "Add your photo"} title="Your photo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {selfie ? <img src={src(selfie)} alt="" className="size-7 rounded-full object-cover" /> : <Icon name="user" />}
             </button>

@@ -1,5 +1,6 @@
 // Run:  node --env-file=.env.local scripts/smoke.ts [selfie.jpg outfit.jpg]
 // Offline checks always run; Gemini checks need GEMINI_API_KEY; the photo path also needs the two image paths.
+import { cheapestSelection, selectCandidates } from "../lib/styling.ts";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { extractGarments, generateTryOn, routeIntent, shopGarments, totalUsd, type Garment, type Img } from "../lib/gemini.ts";
@@ -31,10 +32,11 @@ for (const [text, want, c] of cases) {
 console.log("ok  router");
 
 const shop = await shopGarments("red dress", 100, ["dress"]);
-assert.ok(shop.garments.length >= 1, "shopping returned no items");
-assert.ok(shop.garments.some((x) => x.url?.startsWith("https://")), "no item has a store link");
-assert.ok(totalUsd(shop.garments) <= 100, `over budget: $${totalUsd(shop.garments)}`);
-console.log(`ok  shopping (${shop.garments.length} item(s), ${shop.refs.length} product photo(s))`);
+const selected = selectCandidates(shop, cheapestSelection(shop));
+assert.ok(selected.length >= 1, "shopping returned no items");
+assert.ok(selected.every((x) => x.garment.url?.startsWith("https://")), "missing store link");
+assert.ok(totalUsd(selected.map((c) => c.garment)) <= 100);
+console.log(`ok  shopping (${shop.candidates.length} choices)`);
 
 const [selfiePath, outfitPath] = process.argv.slice(2);
 if (!selfiePath || !outfitPath) {

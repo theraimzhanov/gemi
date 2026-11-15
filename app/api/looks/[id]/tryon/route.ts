@@ -5,7 +5,7 @@ import { startJob } from "@/lib/jobs";
 import { saveLook } from "@/lib/looks";
 import { bad, fail, isImg } from "@/lib/validate";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);

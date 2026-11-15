@@ -18,6 +18,7 @@ export default async function Profile() {
     [user.id],
   );
   const stats: [string, number][] = [["Looks made", rows[0].looks], ["Shared", rows[0].shared], ["Likes received", rows[0].likes]];
+  const profile = await db.query("SELECT preferences FROM users WHERE id = $1", [user.id]);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-8 md:py-14">
@@ -40,7 +41,7 @@ export default async function Profile() {
         ))}
       </dl>
 
-      <ProfileControls />
+      <ProfileControls preferences={{ gender: "", size: "", style: "", ...profile.rows[0].preferences }} />
     </main>
   );
 }

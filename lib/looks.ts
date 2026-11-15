@@ -1,6 +1,7 @@
 import type { User } from "./auth";
 import { db } from "./db";
 import { totalUsd, type Garment, type Img } from "./gemini";
+import { MAX_PHOTOS } from "./styling";
 
 // Keep only the fields we know: part of a garment list can come from the browser, and shared looks are shown to everyone.
 export const cleanGarments = (garments: Garment[]): Garment[] =>
@@ -24,7 +25,7 @@ export async function saveLook(user: User, image: Img, garments: Garment[], refs
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [user.username, user.id, Buffer.from(image.data, "base64"), image.mime, JSON.stringify(clean), totalUsd(clean)],
     );
-    for (const r of refs.slice(0, 8))
+    for (const r of refs.slice(0, MAX_PHOTOS))
       await client.query("INSERT INTO garment_refs (look_id, image, mime) VALUES ($1, $2, $3)", [
         rows[0].id, Buffer.from(r.data, "base64"), r.mime,
       ]);

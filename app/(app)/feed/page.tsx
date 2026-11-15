@@ -7,7 +7,7 @@ import { describeLook, display, Icon, LookCard } from "../../ui";
 export default function Community() {
   const router = useRouter();
   const [looks, setLooks] = useState<FeedLook[] | null>(null);
-  const [sort, setSort] = useState<"trending" | "new">("trending");
+  const [sort, setSort] = useState<"for-you" | "trending" | "new">("for-you");
   const [busy, setBusy] = useState<number | null>(null);
   const [status, setStatus] = useState("");
 
@@ -52,10 +52,10 @@ export default function Community() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className={`${display} text-5xl`}>Community</h1>
         <div className="flex rounded-full bg-mist p-1" role="group" aria-label="Sort looks">
-          {(["trending", "new"] as const).map((s) => (
+          {(["for-you", "trending", "new"] as const).map((s) => (
             <button key={s} aria-pressed={sort === s} onClick={() => setSort(s)}
               className="rounded-full px-5 py-2 text-sm font-semibold transition-colors aria-pressed:bg-white aria-pressed:shadow-sm">
-              {s === "trending" ? "Trending" : "Newest"}
+              {s === "for-you" ? "For you" : s === "trending" ? "Trending" : "Newest"}
             </button>
           ))}
         </div>

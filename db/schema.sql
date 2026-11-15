@@ -64,3 +64,6 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at  timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS jobs_user_created_idx ON jobs (user_id, created_at DESC);

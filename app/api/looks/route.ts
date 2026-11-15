@@ -11,7 +11,13 @@ export async function GET(req: Request) {
     const user = await currentUser();
     if (!user) return bad("Log in to see looks.", 401);
     const { rows } = await db.query(
-      `SELECT l.id, l.author, l.garments, l.total_usd, l.created_at, l.shared,
+      `WITH taste AS (
+         SELECT avg(embedding) AS embedding FROM looks liked
+         WHERE liked.shared AND liked.embedding IS NOT NULL AND EXISTS (
+           SELECT 1 FROM look_events le WHERE le.look_id = liked.id AND le.user_id = $1 AND le.kind = 'like'
+         )
+       )
+       SELECT l.id, l.author, l.garments, l.total_usd, l.created_at, l.shared,
               count(*) FILTER (WHERE e.kind = 'like')::int  AS likes,
               count(*) FILTER (WHERE e.kind = 'tryon')::int AS tryons,
               count(*) FILTER (WHERE e.time > now() - interval '24 hours')::int AS hot,
@@ -19,7 +25,7 @@ export async function GET(req: Request) {
        FROM looks l LEFT JOIN look_events e ON e.look_id = l.id
        WHERE ${mine ? "l.user_id = $1" : "l.shared"}
        GROUP BY l.id
-       ORDER BY ${mine || q.get("sort") === "new" ? "l.created_at DESC" : "hot DESC, l.created_at DESC"}
+       ORDER BY ${mine || q.get("sort") === "new" ? "l.created_at DESC" : q.get("sort") === "for-you" ? "l.embedding <=> (SELECT embedding FROM taste) ASC NULLS LAST, hot DESC, l.created_at DESC" : "hot DESC, l.created_at DESC"}
        LIMIT 80`,
       [user.id],
     );

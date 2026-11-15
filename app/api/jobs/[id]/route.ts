@@ -20,8 +20,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       // A job still 'working' after five minutes was interrupted, for example by a server restart.
       return Response.json(job.stale ? { status: "failed", error: "That took too long and was stopped. Try again." } : { status: "working" });
 
-    const { intent, look_id, similar } = job.result;
-    if (!look_id) return Response.json({ status: "done", reply: { intent, similar } });
+    const { intent, look_id, similar, shopping } = job.result;
+    if (!look_id) return Response.json({ status: "done", reply: { intent, similar, shopping: shopping ? { ...shopping, job: id } : undefined } });
     const look = await db.query("SELECT image, image_mime, garments, total_usd, shared FROM looks WHERE id = $1 AND user_id = $2", [look_id, user.id]);
     if (!look.rowCount) return bad("That look no longer exists.", 404);
     const refs = await db.query("SELECT image, mime FROM garment_refs WHERE look_id = $1 ORDER BY id", [look_id]);

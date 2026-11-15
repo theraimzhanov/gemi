@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { cheapestSelection, selectCandidates, MAX_PHOTOS, type Shopping } from "./styling.ts";
+import { fetchProductImage, publicProductUrl } from "./product-image.ts";
 
 const FLASH = "gemini-3.8-flash";
 const FLASH_FALLBACK = "gemini-3.6-flash";
@@ -15,7 +17,7 @@ export type Garment = {
   url?: string;
 };
 export type Intent =
-  | { tool: "steal_look" }
+  | { tool: "steal_look"; instruction?: string }
   | { tool: "shop_and_dress"; request: string; budget_usd?: number; categories: string[] }
   | { tool: "micro_edit"; instruction: string }
   | { tool: "find_similar"; query: string }
@@ -104,11 +106,14 @@ async function flashOnOpenRouter(p: Record<string, unknown>): Promise<Interactio
       ...(functions.length ? { tools: functions } : {}),
       ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "result", schema } } } : {}),
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(tools.some((t) => t.type === "google_search") ? 120_000 : 60_000),
   });
-  const body = await res.json().catch(() => null);
+  const body = await res.json().catch((e) => {
+    if (e?.name === "AbortError" || e?.name === "TimeoutError") throw new BusyError();
+    throw new Error("OpenRouter returned an unreadable response");
+  });
   const message = body?.choices?.[0]?.message;
-  if (!res.ok || !message) throw Object.assign(new Error(body?.error?.message ?? `OpenRouter answered ${res.status}`), { status: res.status });
+  if (!res.ok || !message) throw Object.assign(new Error(body?.error?.message ?? `OpenRouter answered ${res.status} without a message`), { status: body?.error?.code ?? res.status });
   const call = message.tool_calls?.[0]?.function;
   return {
     output_text: typeof message.content === "string" ? message.content : "",
@@ -148,7 +153,11 @@ async function garmentJson(input: unknown): Promise<Garment[]> {
     response_format: { type: "text", mime_type: "application/json", schema: garmentListSchema },
   });
   const parsed = JSON.parse(r.output_text ?? "{}");
-  if (!Array.isArray(parsed.garments) || !parsed.garments.length) throw new Error("No garments found");
+  if (!Array.isArray(parsed.garments) || !parsed.garments.length || parsed.garments.length > 30 ||
+      !parsed.garments.every((g: Garment) => g && CATEGORIES.includes(g.category) &&
+        typeof g.description === "string" && g.description.length <= 600 && typeof g.color === "string" &&
+        Number.isFinite(g.price_usd) && g.price_usd >= 0 && typeof g.price_is_estimate === "boolean"))
+    throw new Error("Invalid garment response");
   return parsed.garments;
 }
 
@@ -156,6 +165,7 @@ export async function routeIntent(input: {
   text?: string;
   audio?: Img;
   hasOutfitPhoto: boolean;
+  outfits?: Img[];
   hasCurrentLook: boolean;
 }): Promise<Intent> {
   const str = { type: "string" };
@@ -168,15 +178,16 @@ export async function routeIntent(input: {
   const r = await create({
     model: FLASH,
     system_instruction:
-      "You route requests for a fashion try-on app. Call exactly one function. " +
+      "You are Gemi, an AI stylist in a fashion try-on app. Route requests by calling exactly one function. " +
       `Context: outfit photo attached = ${input.hasOutfitPhoto}; user already has a generated look = ${input.hasCurrentLook}. ` +
-      "The request may be text, a voice recording, or both.",
+      "The request may be text, photos, a voice recording, or all three. When reference photos are attached, use steal_look to apply them, including requested modifications. Transcribe voice instructions into the instruction field. Do not ignore attachments.",
     input: [
       text(input.text?.trim() || "(no text; listen to the audio)"),
+      ...(input.outfits ?? []).map(image),
       ...(input.audio ? [{ type: "audio", mime_type: input.audio.mime, data: input.audio.data }] : []),
     ],
     tools: [
-      fn("steal_look", "Copy the whole outfit from the attached outfit photo onto the user. Only when an outfit photo is attached.", {}, []),
+      fn("steal_look", "Apply the garments from attached photos, respecting the user instructions. A product photo changes only that item; a whole outfit photo copies every visible item. Only when photos are attached.", { instruction: str }, ["instruction"]),
       fn(
         "shop_and_dress",
         "Search the web for real clothes to buy and dress the user in them. Use for requests like 'find a $100 red dress' or 'I only need a blue top'.",
@@ -204,12 +215,12 @@ export async function routeIntent(input: {
   const a = (call?.arguments ?? {}) as Record<string, never>;
   switch (call?.name) {
     case "steal_look":
-      return { tool: "steal_look" };
+      return { tool: "steal_look", instruction: String(a.instruction ?? input.text ?? "") };
     case "shop_and_dress":
       return {
         tool: "shop_and_dress",
         request: String(a.request ?? ""),
-        budget_usd: Number(a.budget_usd) || undefined,
+        budget_usd: a.budget_usd == null ? undefined : Number(a.budget_usd),
         categories: (Array.isArray(a.categories) ? (a.categories as string[]) : []).filter((c) => CATEGORIES.includes(c)),
       };
     case "micro_edit":
@@ -221,14 +232,16 @@ export async function routeIntent(input: {
   }
 }
 
-export function extractGarments(outfit: Img): Promise<Garment[]> {
+export function extractGarments(outfit: Img | Img[], instruction = ""): Promise<Garment[]> {
   return garmentJson([
     text(
-      "List every visible garment and accessory the person in this photo is wearing. " +
+      "Identify the garments and accessories to apply from these reference photos. Photos may show individual products, flat lays, or full outfits on people. " +
+        "For a product photo include only the featured product, not a model's incidental styling. For an outfit photo include every worn piece. Deduplicate repeated items. " +
+        `Follow the user instructions to select or modify the items: ${instruction || "Use the featured products or full outfit shown"}. ` +
         "For each give category, a specific description, color, and your best estimate of its retail price in USD. " +
         "Set price_is_estimate to true and leave url out.",
     ),
-    image(outfit),
+    ...(Array.isArray(outfit) ? outfit : [outfit]).map(image),
   ]);
 }
 
@@ -236,56 +249,45 @@ export async function shopGarments(
   request: string,
   budget: number | undefined,
   categories: string[],
-): Promise<{ garments: Garment[]; refs: Img[] }> {
-  const found = await create({
-    model: FLASH,
-    tools: [{ type: "google_search" }],
-    input:
-      `Find real clothes currently for sale online for this request: "${request}". ` +
-      `Pick exactly one item for each of these categories: ${categories.join(", ") || "whatever the request needs"}. ` +
-      (budget ? `The total must not exceed $${budget}. ` : "") +
-      "For each item give the product name, color, price in USD, and the direct product page URL from a retailer.",
-  });
-  // Second call because search grounding plus JSON output in one request is only in preview.
-  const garments = await garmentJson(
-    "Convert this shopping answer into the garment list. Use the price and product URL exactly as given; " +
-      "set price_is_estimate to false when a price was found, true when you had to guess.\n\n" +
-      (found.output_text ?? ""),
-  );
-  const refs = (await Promise.all(garments.map((g) => fetchProductImage(g.url)))).filter((r) => r !== null);
-  return { garments, refs };
+  preferences = "",
+): Promise<Shopping> {
+  if (budget !== undefined && (!Number.isFinite(budget) || budget <= 0)) throw new Error("Invalid budget");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const found = await create({
+      model: FLASH,
+      tools: [{ type: "google_search" }],
+      input:
+        `Find real clothes currently for sale online for this request: ${JSON.stringify(request)}. ` +
+        `Offer up to three different products per category: ${categories.join(", ") || "the categories needed for this request"}. ` +
+        (budget !== undefined ? `A complete selection of one item per category MUST fit a TOTAL budget of $${budget} USD, before tax/shipping. ${attempt ? "The previous search was over budget or incomplete. Search cheaper retailers and complete every requested category. " : ""}` : "") +
+        `Shopping preferences (never infer gender from a photo): ${preferences || "Unspecified; prefer unisex where appropriate"}. ` +
+        "The explicit request takes priority over style preferences. Give each product's name, color, current USD price and direct retailer product-page URL. Do not invent prices or URLs. Mention size availability only if verified. Keep the answer concise.",
+    });
+    const raw = await garmentJson(
+      "Convert the shopping answer to garments, preserving ALL alternatives. Use only stated USD prices and exact product URLs. " +
+      "Set price_is_estimate=false only for stated prices; omit products with unknown prices.\n" + (found.output_text ?? ""),
+    );
+    const garments = raw.filter((g) => CATEGORIES.includes(g.category) &&
+      (!categories.length || categories.includes(g.category)) && typeof g.description === "string" && typeof g.color === "string" &&
+      Number.isFinite(g.price_usd) && g.price_usd > 0 && !g.price_is_estimate && publicProductUrl(g.url));
+    const needed = categories.length ? [...new Set(categories)] : [...new Set(garments.map((g) => g.category))];
+    const candidates = needed.flatMap((category) => garments.filter((g) => g.category === category)
+      .filter((g, i, all) => all.findIndex((other) => other.url === g.url) === i).slice(0, 3).map((garment) => ({ garment })));
+    const shopping: Shopping = { request, budget, categories: needed, candidates };
+    try {
+      if (!needed.length) throw new Error("No priced products");
+      selectCandidates(shopping, cheapestSelection(shopping));
+    } catch { continue; }
+    await Promise.all(shopping.candidates.map(async (candidate) => {
+      const photo = await fetchProductImage(candidate.garment.url);
+      if (photo) candidate.image = photo;
+    }));
+    return shopping;
+  }
+  throw new ShoppingError("I couldn't find a complete set with listed prices within your budget. Try a higher budget or fewer pieces.");
 }
 
-// shortcut: blocks obvious internal hosts only, not redirects or DNS tricks; add a proper egress allowlist before hosting this publicly.
-function isPublicHttps(u: string) {
-  try {
-    const { protocol, hostname } = new URL(u);
-    return protocol === "https:" && hostname.includes(".") && !/^[\d.]+$|^\[|\.local$|\.internal$/.test(hostname);
-  } catch {
-    return false;
-  }
-}
-
-async function fetchProductImage(url?: string): Promise<Img | null> {
-  try {
-    if (!url || !isPublicHttps(url)) return null;
-    const page = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { "user-agent": "Mozilla/5.0 GemiBot" } });
-    const html = (await page.text()).slice(0, 400_000);
-    const src =
-      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
-      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
-    if (!src) return null;
-    const imgUrl = new URL(src.replaceAll("&amp;", "&"), page.url).href;
-    if (!isPublicHttps(imgUrl)) return null;
-    const res = await fetch(imgUrl, { signal: AbortSignal.timeout(6000) });
-    const mime = res.headers.get("content-type")?.split(";")[0] ?? "";
-    const bytes = Buffer.from(await res.arrayBuffer());
-    if (!res.ok || !/^image\/(jpeg|png|webp)$/.test(mime) || bytes.length > 4_000_000) return null;
-    return { mime, data: bytes.toString("base64") };
-  } catch {
-    return null; // the try-on falls back to the text description
-  }
-}
+export class ShoppingError extends Error {}
 
 // One place that makes a picture. Google's free tier refuses its image models, so when an OpenRouter key
 // is set the same Gemini image model is called through OpenRouter; otherwise Google is called directly.
@@ -313,21 +315,22 @@ async function makeImage(prompt: string, images: Img[], aspect_ratio: string): P
   return { mime: out.media_type ?? "image/png", data: out.b64_json };
 }
 
-export async function generateTryOn(person: Img, garments: Garment[], refs: Img[], onlyCategories?: string[]): Promise<Img> {
+export async function generateTryOn(person: Img, garments: Garment[], refs: Img[], onlyCategories?: string[], instruction = ""): Promise<Img> {
   const scope = onlyCategories?.length
-    ? `Change only these parts of the outfit: ${onlyCategories.join(", ")}. Keep every other piece of clothing they are wearing exactly as it is.`
+    ? `Change only these parts of the outfit: ${onlyCategories.join(", ")}. Within these categories replace ONLY the listed products (for example glasses, not all accessories). Keep every other piece of clothing and accessory exactly as it is.`
     : "Replace their whole outfit.";
   return makeImage(
     "The first image is a photo of a person. Dress this exact person in the garments listed below. " +
       "Keep their face, hair, skin tone, body proportions, pose and background unchanged. " +
       `${scope}
+User instructions: ${instruction || "Match the reference garments"}. Respect layering, colors and exclusions requested.
 Garments: ${describe(garments)}.
 ` +
       (refs.length
         ? "The remaining images are reference pictures of those garments; match them closely and ignore any person shown in them. "
         : "") +
       "Output one photorealistic full-body image.",
-    [person, ...refs.slice(0, 8)],
+    [person, ...refs.slice(0, MAX_PHOTOS)],
     "3:4",
   );
 }
