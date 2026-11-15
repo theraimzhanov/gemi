@@ -1,3 +1,5 @@
+<p align="center"><img src="public/gemi-logo.svg" alt="Gemi logo" width="160"></p>
+
 # Gemi
 
 ## The problem

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024" role="img" aria-label="Gemi abstract G orbit logo">
+  <defs>
+    <linearGradient id="gBody" x1=".08" y1=".12" x2=".88" y2=".92" objectBoundingBox="true">
+      <stop offset="0" stop-color="#e8c4ff"/><stop offset=".22" stop-color="#9d4aff"/><stop offset=".52" stop-color="#6c27e9"/><stop offset=".77" stop-color="#bc38f1"/><stop offset="1" stop-color="#ee75f5"/>
+    </linearGradient>
+    <linearGradient id="gTop" x1="0" y1="0" x2="1" y2=".3" objectBoundingBox="true">
+      <stop stop-color="#f3d8ff"/><stop offset=".42" stop-color="#a45afa"/><stop offset=".83" stop-color="#d750f0"/><stop offset="1" stop-color="#ff9cfa"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1=".05" y1=".8" x2=".95" y2=".3" objectBoundingBox="true">
+      <stop stop-color="#8060ff"/><stop offset=".32" stop-color="#e2b4ff"/><stop offset=".64" stop-color="#9d35f4"/><stop offset="1" stop-color="#fc75fa"/>
+    </linearGradient>
+    <linearGradient id="inner" x1="0" x2=".9" y1="0" y2="1" objectBoundingBox="true">
+      <stop stop-color="#f6d8ff"/><stop offset=".5" stop-color="#be78ff"/><stop offset="1" stop-color="#722adf"/>
+    </linearGradient>
+    <radialGradient id="spark"><stop stop-color="#fff"/><stop offset=".46" stop-color="#fff2ff"/><stop offset="1" stop-color="#f196ff"/></radialGradient>
+  </defs>
+  <!-- Transparent canvas. Bold swooping letter G is constructed as editable paths. -->
+  <path fill="url(#gBody)" d="M 734 305 C 672 241 553 237 446 280 C 319 329 252 449 266 559 C 279 676 385 748 512 752 C 643 755 744 684 766 563 L 768 534 L 555 534 L 530 591 L 665 592 C 637 647 585 680 515 676 C 412 673 341 610 344 524 C 349 432 409 361 498 337 C 580 315 659 337 705 372 C 731 389 755 366 751 343 C 750 328 744 315 734 305 Z"/>
+  <!-- Light-catching upper edge -->
+  <path fill="url(#gTop)" d="M 281 483 C 286 386 358 293 469 259 C 577 225 685 252 733 300 C 767 331 758 363 727 387 C 737 356 685 333 647 326 C 562 303 483 324 416 382 C 356 434 324 501 316 555 C 287 554 274 527 281 483 Z"/>
+  <!-- Orbit passes behind the G at left -->
+  <path fill="url(#orbit)" d="M 279 497 C 176 568 154 660 232 707 C 297 747 405 747 523 724 C 383 743 279 725 244 679 C 206 629 238 570 307 523 Z"/>
+  <!-- Orbit foreground tapered band -->
+  <path fill="url(#orbit)" d="M 222 675 C 271 738 424 742 594 688 C 754 637 859 569 852 507 C 848 476 828 460 789 457 C 825 472 824 504 795 536 C 735 607 601 674 465 704 C 337 731 252 719 222 675 Z"/>
+  <!-- Soft orbit highlight -->
+  <path fill="#f5d3ff" opacity=".82" d="M 234 688 C 292 741 421 727 576 685 C 710 650 811 585 838 534 C 806 602 707 665 567 704 C 409 748 284 750 234 688 Z"/>
+  <!-- Starburst -->
+  <path fill="url(#spark)" d="M 829 356 C 842 399 846 409 888 423 C 846 436 840 447 829 489 C 817 446 809 436 768 423 C 808 411 817 400 829 356 Z"/>
+</svg>
