@@ -32,12 +32,44 @@ function UseCase({ title, body, flip, children }: { title: string; body: string;
 }
 
 // HackUTA theme: each thing the agent does on its own, paired with its part of Homer's Odyssey.
-const VOYAGE = [
-  ["Athena", "Tries it on you", "Athena changed how Odysseus looked before every big moment. Gemi puts the clothes on your own photo."],
-  ["The voyage", "Searches the stores", "Odysseus sailed from island to island. Gemi goes from store to store and returns with real items inside your budget."],
-  ["Ithaca", "Plans for a date", "Every voyage has a destination. Give Gemi a date and the outfit is ready when you arrive."],
-  ["Mentor", "Knows your taste", "Athena guided the family as Mentor, the old friend who knew them. Gemi remembers your sizes, your style and the looks you like."],
-  ["Penelope", "Works while you are away", "Penelope kept her loom going while Odysseus was gone. Gemi keeps working after you close the tab."],
+const badge = "absolute rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm";
+const VOYAGE: [string, string, React.ReactNode][] = [
+  ["Athena", "Tries it on you", (
+    <>
+      <div className="grid grid-cols-2 gap-1.5 p-0.5">
+        <Photo i="you" className="rounded-xl" alt="A man in a plain tee and jeans" />
+        <Photo i="you-wearing" className="rounded-xl ring-2 ring-berry" alt="The same man wearing a denim jacket outfit" />
+      </div>
+    </>
+  )],
+  ["The voyage", "Searches the stores", (
+    <>
+      <Photo i={0} className="rounded-xl" alt="A woman in a red wrap dress with sandals and a bag" />
+      <span className="absolute left-2 top-2 flex flex-col items-start gap-1.5">{DEMO[0].garments.slice(0, 3).map((g) => <Tag key={g.description} price={g.price_usd} />)}</span>
+    </>
+  )],
+  ["Ithaca", "Plans for a date", (
+    <>
+      <Photo i={3} className="rounded-xl" alt="A person in a planned outfit" />
+      <span className="absolute left-2 top-2 overflow-hidden rounded-xl bg-white text-center shadow-sm">
+        <span className="block bg-berry px-3 py-0.5 text-[0.65rem] font-semibold uppercase tracking-widest text-white">Dec</span>
+        <span className={`${display} block px-3 py-0.5 text-xl`}>10</span>
+      </span>
+    </>
+  )],
+  ["Mentor", "Knows your taste", (
+    <>
+      <Photo i={9} className="rounded-xl" alt="A look that matches the saved style" />
+      <span className={`${badge} right-2 top-2 !p-1.5 text-berry`}><Icon name="heart" fill className="size-4" /></span>
+      <span className={`${badge} bottom-2 left-2`}>Size M · Casual</span>
+    </>
+  )],
+  ["Penelope", "Works while you are away", (
+    <>
+      <Photo i={5} className="rounded-xl" alt="A finished look" />
+      <span className={`${badge} inset-x-2 bottom-2 flex items-center justify-center gap-1`}><Icon name="check" className="size-4 text-berry" /> Ready for you</span>
+    </>
+  )],
 ];
 
 const Caption =({ children }: { children: React.ReactNode }) => <p className="mt-2 text-center text-sm font-medium">{children}</p>;
@@ -79,13 +111,13 @@ export default async function Landing() {
 
         <section>
           <h2 className={`${display} max-w-3xl text-4xl md:text-5xl`}>Gemi makes the odyssey. You stay home.</h2>
-          <p className="mt-4 max-w-2xl text-lg leading-8 text-mute">Getting dressed online is a long voyage: dozens of stores, sizes and prices. Gemi is an agent that sails it for you, the way Athena looked after Odysseus.</p>
-          <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {VOYAGE.map(([myth, does, why]) => (
-              <li key={myth} className="rounded-3xl bg-mist p-5">
-                <p className="text-sm font-semibold uppercase tracking-widest text-berry">{myth}</p>
-                <h3 className={`${display} mt-2 text-xl`}>{does}</h3>
-                <p className="mt-2 text-sm leading-6 text-mute">{why}</p>
+          <p className="mt-4 max-w-2xl text-lg leading-8 text-mute">An agent that sails the stores for you, the way Athena looked after Odysseus.</p>
+          <ol className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
+            {VOYAGE.map(([myth, does, visual]) => (
+              <li key={myth} className="rounded-3xl bg-mist p-3">
+                <div className="relative flex aspect-[3/4] items-center overflow-hidden rounded-xl">{visual}</div>
+                <p className="mt-3 px-1 text-xs font-semibold uppercase tracking-widest text-berry">{myth}</p>
+                <h3 className={`${display} px-1 pb-1 text-lg leading-tight`}>{does}</h3>
               </li>
             ))}
           </ol>
