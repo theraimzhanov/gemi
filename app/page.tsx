@@ -110,7 +110,7 @@ export default async function Landing() {
         </section>
 
         <section>
-          <h2 className={`${display} max-w-3xl text-4xl md:text-5xl`}>Gemi makes the odyssey. You stay home.</h2>
+          <h2 className={`${display} max-w-3xl text-4xl md:text-5xl`}>Gemi makes the odyssey. You arrive dressed.</h2>
           <p className="mt-4 max-w-2xl text-lg leading-8 text-mute">An agent that sails the stores for you, the way Athena looked after Odysseus.</p>
           <ol className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
             {VOYAGE.map(([myth, does, visual]) => (
