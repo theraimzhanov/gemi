@@ -125,7 +125,21 @@ export default async function Landing() {
       </main>
 
       <footer className="mx-auto w-full max-w-6xl px-5 pb-10 text-sm text-mute">
-        The people on this page are AI-generated and do not exist. Looks you create in Gemi are generated from your own photo.
+        <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-6 border-t border-line pt-8">
+          <div className="max-w-sm">
+            <p className="font-semibold text-ink">Powered by Google Gemini</p>
+            <p className="mt-1">The people on this page are AI-generated and do not exist. Looks you create in Gemi are generated from your own photo.</p>
+          </div>
+          <nav aria-label="Legal" className="flex flex-col gap-1">
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link href="/privacy#terms" className="hover:text-ink">Terms of use</Link>
+          </nav>
+          <address className="flex flex-col gap-1 not-italic">
+            <span className="font-semibold text-ink">Contact</span>
+            <a href="mailto:raimjanovnursultan@gmail.com" className="hover:text-ink">raimjanovnursultan@gmail.com</a>
+            <a href="tel:+12818929691" className="hover:text-ink">(281) 892-9691</a>
+          </address>
+        </div>
       </footer>
     </>
   );
