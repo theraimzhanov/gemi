@@ -4,22 +4,16 @@ import { currentUser } from "@/lib/auth";
 import { DEMO } from "@/lib/demo";
 import { totalUsd } from "@/lib/gemini";
 import { btn, btnGhost, display } from "./styles";
-import { Art, Icon, Logo, Tag } from "./ui";
+import { Icon, Logo, Photo, Tag } from "./ui";
 
 const fade = { maskImage: "linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent)" };
-const plain = [
-  { category: "top", description: "plain tee", color: "white" },
-  { category: "bottom", description: "jeans", color: "indigo" },
-];
-const before = DEMO[8].garments;
-const after = before.map((g) => (g.category === "top" ? { ...g, color: "blue" } : g));
 
 function Column({ from, reverse }: { from: number; reverse?: boolean }) {
   const looks = [0, 1, 2, 3].map((i) => (from + i * 3) % DEMO.length);
   return (
     <div className={reverse ? "drift-reverse" : "drift"}>
       {[...looks, ...looks].map((i, n) => (
-        <Art key={n} garments={DEMO[i].garments} seed={i} height={DEMO[i].height} className="mb-4 rounded-3xl" />
+        <Photo key={n} i={i} className="mb-4 rounded-3xl" />
       ))}
     </div>
   );
@@ -75,11 +69,11 @@ export default async function Landing() {
 
         <UseCase title="Copy a whole outfit from one photo" body="See a look you love on someone else? Upload the picture. Gemi finds every piece in it, from jacket to shoes, and puts all of it on you in one go.">
           <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 sm:gap-3">
-            <div><Art garments={DEMO[1].garments} seed={1} height={440} className="rounded-2xl" /><Caption>Their outfit</Caption></div>
+            <div><Photo i={1} className="rounded-2xl" alt="A man in a denim jacket, white tee, olive cargo trousers and white sneakers" /><Caption>Their outfit</Caption></div>
             <Icon name="plus" className="size-5 text-mute" />
-            <div><Art garments={plain} seed={3} height={440} className="rounded-2xl" /><Caption>You</Caption></div>
+            <div><Photo i="you" className="rounded-2xl" alt="A different man in a plain tee and jeans" /><Caption>You</Caption></div>
             <span className={`${display} text-xl text-mute`} aria-hidden="true">=</span>
-            <div><Art garments={DEMO[1].garments} seed={3} height={440} className="rounded-2xl ring-2 ring-berry" /><Caption>You, wearing it</Caption></div>
+            <div><Photo i="you-wearing" className="rounded-2xl ring-2 ring-berry" alt="The second man now wearing the same denim jacket outfit" /><Caption>You, wearing it</Caption></div>
           </div>
         </UseCase>
 
@@ -87,7 +81,7 @@ export default async function Landing() {
           <div className="space-y-4">
             <p className="ml-auto w-fit rounded-3xl rounded-br-md bg-ink px-5 py-3 text-sm text-white">Find a red dress under $100</p>
             <div className="flex gap-4 rounded-3xl bg-white p-4">
-              <Art garments={DEMO[0].garments} seed={2} height={420} className="w-32 shrink-0 rounded-2xl sm:w-40" />
+              <Photo i={0} className="!w-32 shrink-0 rounded-2xl sm:!w-40" alt="A woman in a red wrap midi dress with tan sandals and a black bag" />
               <ul className="flex-1 self-center text-sm">
                 {DEMO[0].garments.map((g) => (
                   <li key={g.description} className="flex items-center justify-between gap-2 border-b border-line py-2.5">
@@ -102,8 +96,8 @@ export default async function Landing() {
 
         <UseCase title="Change one piece, keep the rest" body="Only need a blue top? Say so. Gemi swaps that one thing and leaves the rest of your outfit exactly as it was.">
           <div className="grid grid-cols-2 gap-4">
-            <div><Art garments={before} seed={4} height={470} className="rounded-2xl" /><Caption>Before</Caption></div>
-            <div><Art garments={after} seed={4} height={470} className="rounded-2xl ring-2 ring-berry" /><Caption>After: only the top changed</Caption></div>
+            <div><Photo i={8} className="rounded-2xl" alt="A woman in a pink tank top and navy pleated skirt" /><Caption>Before</Caption></div>
+            <div><Photo i="after" className="rounded-2xl ring-2 ring-berry" alt="The same woman, now in a blue tank top with the same skirt" /><Caption>After: only the top changed</Caption></div>
           </div>
         </UseCase>
 
@@ -112,7 +106,7 @@ export default async function Landing() {
             {[6, 3, 9, 5, 11, 7].map((i, n) => (
               <div key={i}>
                 <div className="relative overflow-hidden rounded-2xl">
-                  <Art garments={DEMO[i].garments} seed={i} height={DEMO[i].height} />
+                  <Photo i={i} />
                   {n === 1 && <span className="absolute inset-x-2 bottom-2 rounded-full bg-white py-1.5 text-center text-xs font-semibold">Try on me</span>}
                 </div>
                 <div className="flex items-center justify-between px-1 pt-1.5 text-xs">
@@ -131,7 +125,7 @@ export default async function Landing() {
       </main>
 
       <footer className="mx-auto w-full max-w-6xl px-5 pb-10 text-sm text-mute">
-        The pictures on this page are illustrations. Looks you create in Gemi are generated from your own photo.
+        The people on this page are AI-generated and do not exist. Looks you create in Gemi are generated from your own photo.
       </footer>
     </>
   );

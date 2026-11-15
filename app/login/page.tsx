@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { DEMO } from "@/lib/demo";
-import { Art, Logo } from "../ui";
+import { Logo, Photo } from "../ui";
 import { AuthForm } from "./form";
 
 // Every request reads the login cookie, so this route renders on the server instead of from a static shell.
@@ -15,7 +14,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <div className="hidden overflow-hidden bg-mist p-6 md:block" aria-hidden="true">
         <div className="masonry columns-3">
           {[0, 5, 9, 2, 7, 10, 4, 1, 6].map((i) => (
-            <Art key={i} garments={DEMO[i].garments} seed={i} height={DEMO[i].height} className="rounded-3xl" />
+            <Photo key={i} i={i} className="rounded-3xl" />
           ))}
         </div>
       </div>

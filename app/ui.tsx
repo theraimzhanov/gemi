@@ -51,6 +51,13 @@ export function Art({ garments, seed = 0, height = 460, className = "", alt = ""
   return <img src={artSrc(lookArt(garments, seed, height))} alt={alt} width={300} height={height} className={`h-auto w-full ${className}`} />;
 }
 
+// The generated catalog photo of demo look `i` (see lib/demo.ts).
+export function Photo({ i, className = "", alt = "" }: { i: number | string; className?: string; alt?: string }) {
+  const file = typeof i === "number" ? String(i).padStart(2, "0") : i;
+  // eslint-disable-next-line @next/next/no-img-element -- small pre-sized JPEGs in public/
+  return <img src={`/looks/${file}.jpg`} alt={alt} width={600} height={800} loading="lazy" className={`h-auto w-full ${className}`} />;
+}
+
 export function Receipt({ garments, total }: { garments: Garment[]; total: number | string }) {
   return (
     <table className="w-full text-sm">
