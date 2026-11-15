@@ -162,7 +162,7 @@ export default function Chat() {
         {msgs.length === 0 && (
           <div className="m-auto w-full max-w-xl py-10">
             <h1 className={`${display} text-5xl leading-none md:text-6xl`}>What are we wearing today, {me.username}?</h1>
-            <p className="mt-4 text-lg text-mute">Attach product or outfit photos, add instructions, or describe what you want to shop for. You can also say it out loud.</p>
+            <p className="mt-4 text-lg text-mute">I’m Gemi, your AI stylist. Attach product or outfit photos, add instructions, or describe what you want to shop for. You can also say it out loud.</p>
             {!selfie && (
               <button className={`${btn} mt-6`} onClick={() => selfieInput.current?.click()}><Icon name="user" /> Add your photo to start</button>
             )}
@@ -185,6 +185,11 @@ export default function Chat() {
             </div>
           ) : (
             <div key={i} className="pop max-w-full space-y-3">
+              <div className="flex items-center gap-1 text-sm font-semibold">
+                {/* eslint-disable-next-line @next/next/no-img-element -- local vector brand mark */}
+                <img src="/icon.svg" alt="" width={32} height={32} className="size-8" />
+                Gemi
+              </div>
               <p className="w-fit rounded-3xl rounded-bl-md bg-mist px-5 py-3">{m.note}</p>
               {m.shopping && <Choices shopping={m.shopping} busy={busy || uploading} onConfirm={(indices) => confirm(m.shopping!, indices)} />}
               {m.look && (

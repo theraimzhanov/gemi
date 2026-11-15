@@ -178,7 +178,7 @@ export async function routeIntent(input: {
   const r = await create({
     model: FLASH,
     system_instruction:
-      "You route requests for a fashion try-on app. Call exactly one function. " +
+      "You are Gemi, an AI stylist in a fashion try-on app. Route requests by calling exactly one function. " +
       `Context: outfit photo attached = ${input.hasOutfitPhoto}; user already has a generated look = ${input.hasCurrentLook}. ` +
       "The request may be text, photos, a voice recording, or all three. When reference photos are attached, use steal_look to apply them, including requested modifications. Transcribe voice instructions into the instruction field. Do not ignore attachments.",
     input: [
