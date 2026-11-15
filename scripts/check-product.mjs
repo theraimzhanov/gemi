@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { registerHooks } from 'node:module';
+import { EventEmitter } from 'node:events';
+import sharp from 'sharp';
+
+const fixture = readFileSync(new URL('../public/looks/you.jpg', import.meta.url));
+const state = globalThis.gemiProductTest = { requests: [], privateHost: false, redirectPrivate: false, oversized: false };
+state.lookup = async (host) => [{ address: state.privateHost || host === 'private.example' ? '127.0.0.1' : '93.184.216.34', family: 4 }];
+state.request = (url, options, onResponse) => {
+  state.requests.push(url);
+  const req = new EventEmitter();
+  let destroyed = false;
+  req.destroy = (error) => { destroyed = true; if (error) req.emit('error', error); };
+  req.end = () => queueMicrotask(() => {
+    options.lookup(new URL(url).hostname, {}, (_error, address) => assert.equal(address, '93.184.216.34', 'connect to the verified address'));
+    const res = new EventEmitter();
+    res.resume = () => {};
+    const isImage = url.endsWith('/photo.jpg');
+    res.statusCode = state.redirectPrivate ? 302 : 200;
+    res.headers = state.redirectPrivate ? { location: 'https://private.example/secret' } : { 'content-type': isImage ? 'image/jpeg' : 'text/html' };
+    onResponse(res);
+    const body = isImage ? (state.oversized ? Buffer.alloc(4_000_001) : fixture) : Buffer.from('<meta property="og:image" content="/photo.jpg">' + 'x'.repeat(500_000));
+    res.emit('data', body);
+    if (!destroyed) res.emit('end');
+  });
+  return req;
+};
+const mock = (source) => 'data:text/javascript,' + encodeURIComponent(source);
+registerHooks({ resolve(specifier, context, next) {
+  if (specifier === 'node:dns/promises') return { url: mock('export const lookup = (...a) => globalThis.gemiProductTest.lookup(...a);'), shortCircuit: true };
+  if (specifier === 'node:https') return { url: mock('export const request = (...a) => globalThis.gemiProductTest.request(...a);'), shortCircuit: true };
+  return next(specifier, context);
+} });
+const { fetchProductImage } = await import('../lib/product-image.ts');
+const preview = await fetchProductImage('https://shop.example/item');
+assert.ok(preview, 'extract metadata from a large page without downloading all of it');
+assert.equal(preview.mime, 'image/jpeg');
+const metadata = await sharp(Buffer.from(preview.data, 'base64')).metadata();
+assert.ok(metadata.width <= 512 && metadata.height <= 512);
+assert.ok(preview.data.length < 200_000);
+state.requests = []; state.privateHost = true;
+assert.equal(await fetchProductImage('https://shop.example/item'), null);
+assert.equal(state.requests.length, 0, 'private DNS answers must never be contacted');
+state.privateHost = false; state.redirectPrivate = true;
+assert.equal(await fetchProductImage('https://shop.example/item'), null);
+assert.equal(state.requests.length, 1, 'redirect targets must be validated before contact');
+state.redirectPrivate = false; state.oversized = true;
+assert.equal(await fetchProductImage('https://shop.example/item'), null);
+console.log('ok large-page metadata, bounded resized previews, DNS pinning, private redirect rejection and oversized image rejection');

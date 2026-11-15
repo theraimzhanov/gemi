@@ -24,6 +24,7 @@ export async function fileToImg(file: File, max = 1024): Promise<Img> {
   canvas.width = Math.round(bmp.width * scale);
   canvas.height = Math.round(bmp.height * scale);
   canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close();
   return { mime: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.85).split(",")[1] };
 }
 
@@ -59,11 +60,10 @@ export async function post<T>(url: string, body: unknown): Promise<T> {
   return data;
 }
 
-// Starts a generation job and waits for it. The server answers at once with a job id; the result is read from
-// the job row in Tiger Data, so a slow picture is never cut off by a request time limit.
+// The job survives navigation; after() is still bounded by the hosting platform's function timeout.
 export async function postJob<T>(url: string, body: unknown): Promise<T> {
   const { job } = await post<{ job: number }>(url, body);
-  for (let tries = 0; tries < 90; tries++) {
+  for (let tries = 0; tries < 155; tries++) {
     await new Promise((r) => setTimeout(r, 2000));
     const res = await fetch(`/api/jobs/${job}`).catch(() => null);
     if (!res) continue; // a dropped connection: keep waiting, the job carries on without us

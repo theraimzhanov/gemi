@@ -2,14 +2,15 @@ import { after } from "next/server";
 import type { User } from "./auth";
 import { db } from "./db";
 import { publicMessage } from "./validate";
+import { reserveJob } from "./job-limit";
+import type { Shopping } from "./styling";
 
 // What a finished job stores. Pictures stay in the looks table; the job only points at them.
-export type JobResult = { intent: { tool: string; message?: string }; look_id?: number; similar?: unknown[] };
+export type JobResult = { intent: { tool: string; message?: string }; look_id?: number; similar?: unknown[]; shopping?: Shopping };
 
 // Records the request in Tiger Data, answers at once with the job id, and does the slow work after the response.
 export async function startJob(user: User, work: () => Promise<JobResult>) {
-  const { rows } = await db.query("INSERT INTO jobs (user_id) VALUES ($1) RETURNING id", [user.id]);
-  const id = rows[0].id;
+  const id = await reserveJob(user.id);
   after(async () => {
     try {
       const result = await work();

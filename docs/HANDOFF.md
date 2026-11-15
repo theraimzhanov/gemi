@@ -1,40 +1,55 @@
-# Gemi handoff notes
+# Gemi handoff
 
-Gemi is an AI stylist: a user adds a photo of themselves, then copies an outfit from a photo, shops by text or voice, or tries on a community look. Built for HackUTA 2026 (prizes targeted: Best Use of Gemini API, Best Use of Tiger Data).
+Gemi is an AI stylist built for HackUTA 2026. Users upload a photo of themselves, apply clothing references, shop by text/voice, or try on community looks.
 
-## Run it
-1. `npm install`
-2. Create `.env.local` with `GEMINI_API_KEY` (Google AI Studio, free tier), `OPENROUTER_API_KEY` (needs paid credits; pictures cost about 7 cents a look), `DATABASE_URL` (Tiger Data / Timescale Postgres).
-3. `node --env-file=.env.local scripts/setup-db.ts` creates the tables; `node --env-file=.env.local scripts/seed.ts` fills the community with the 12 demo looks.
-4. `npm run dev`
+## Run and verify
 
-Never commit `.env.local`. This is a newer Next.js than most documentation describes; read `node_modules/next/dist/docs/` before changing routing or data fetching (see `AGENTS.md`).
+1. `npm install` (Node 24+ for the TypeScript and offline route-test loader; the current machine uses Node 26).
+2. Keep `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, and `DATABASE_URL` in ignored `.env.local`. Never commit keys.
+3. Run `node --env-file=.env.local scripts/setup-db.ts` before using this branch. This adds `users.preferences` and a jobs lookup index; it does not reset data. The migration has been applied to the configured development database.
+4. `npm run dev` (the existing local server is on port 3000).
+5. `npm test`, `npm run lint`, and `npm run build` require no paid generations. `npm run test:db` needs the running local server and the configured database; it creates isolated fixtures and removes them in `finally`.
 
-## How it works
-- `lib/gemini.ts` — every model call. Text calls (`routeIntent`, `extractGarments`, `shopGarments`) go to `google/gemini-3.8-flash` on OpenRouter first and fall back to Google. Pictures (`generateTryOn`, `editLook`) go to `google/gemini-nano-banana-2.1` on OpenRouter. Embeddings use Google.
-- `lib/jobs.ts` — a request inserts a row in `jobs`, answers with the job id, and does the work after the response. `app/api/jobs/[id]/route.ts` is polled by `postJob` in `lib/client.ts`.
-- `app/api/chat/route.ts` — routes a request to one of: `steal_look`, `shop_and_dress`, `micro_edit`, `find_similar`.
-- `lib/looks.ts` — `saveLook` stores every generated look as private; sharing is `POST /api/looks`.
-- `lib/auth.ts`, `lib/password.ts` — email login, scrypt hashes, session cookie.
-- Screens: `app/page.tsx` (landing), `app/login`, and `app/(app)/` for `studio` (chat), `feed`, `looks`, `profile`.
-- `db/schema.sql` — `looks`, `garment_refs`, `look_events` (hypertable, drives Trending), `users`, `sessions`, `jobs`. `looks.embedding` (pgvector) drives similar looks.
+Optional `DAILY_JOB_LIMIT` defaults to **10 requests per user in a rolling 24 hours**. Searches, confirmations, edits, similar-look requests, community try-ons, and failed attempts all count. Search plus confirmation uses two requests. Reservations are serialized per user before provider calls. This is a request cap, not an exact dollar cap or protection against creating multiple accounts.
 
-## Verified working (in the browser, with real pictures)
-Sign-up and login, "Try on me" from the community, a one-piece edit in chat, shopping from text with a real store link, similar looks, sharing, likes (one per user), My looks, Profile.
+## Changes on codex/hackathon-styling-fixes
 
-## Known gaps, in suggested order
-1. **One product photo changes the whole outfit.** A photo with no text always goes to `steal_look`. If the photo shows one or two pieces, change only those categories; `generateTryOn` already takes `onlyCategories`.
-2. **Only one photo can be attached.** Allow several in `app/(app)/studio/page.tsx` and the chat route; read garments from each and pass all as references (the picture model accepts up to 14).
-3. **Text and photo are not combined.** `routeIntent` is told a photo exists but never sees it, and `generateTryOn` never sees the user's words.
-4. **No "is this the one you wanted?" step.** Shopping picks one item per category and generates at once. Offer about 3 candidates with photo, price and link, and generate after the user picks.
-5. **Budget is requested, not enforced.** Check the total in `shopGarments` and drop or re-search the priciest item.
-6. **Likes do not personalise anything.** Use the embeddings of liked looks for a "For you" order and to bias shopping.
-7. **Receipt does not follow a small edit.** After `micro_edit`, re-read garments with `extractGarments`.
-8. **Shopping ignores who the user is.** A women's shirt was picked for a man. Store gender, size and style on Profile and add them to the shopping request.
-9. **No spending limit per user.** Add a daily cap counted from `jobs` before publishing; every look spends OpenRouter credit.
+The branch must remain unmerged until the owner approves it.
 
-## Untested
-Voice requests, the file-upload buttons (tests injected the photo directly), a full "$500 outfit" request, a production build, and publishing on Vercel (set the three env vars there; check the function time limit against `maxDuration = 120`).
+| Original gap | Current behavior |
+| --- | --- |
+| Single-product photo replaces everything | Extraction distinguishes featured products from outfits. Generation targets the detected categories and explicitly preserves unrelated pieces, including other accessories. |
+| Only one attachment | Up to 13 reference photos plus the user's photo. Uploads are resized, removable individually, and checked against a combined payload limit. |
+| Text and photos ignored one another | Intent routing sees all references; extraction and generation receive the instructions. Voice instructions are passed through the intent result. |
+| No product choice | Search returns up to three options per category with available photos, prices and store links. Only **Try these on** starts generation. Server checks the caller-owned saved search and selected indices; choices expire after 24 hours. |
+| Budget not enforced | Integer-cent checks validate a complete selection before previews and again before generation. An unaffordable/incomplete search is retried once for cheaper items; otherwise it fails clearly. Budget applies to selected purchases before tax/shipping, not the value of previously worn clothes. |
+| Likes not used | **For you** ranks by distance to the average embedding of liked, shared looks, falling back to Trending when there is no taste vector. Recent liked looks also inform shopping. |
+| Edited receipt stale | Photo applications and micro-edits re-extract the rendered outfit. Prices after edits are estimates; stale store links are discarded. The final rendered image becomes the reference for future community try-ons. |
+| No shopping profile | Optional department/gender, sizes and style are saved in Profile and included in shopping. Explicit requests take priority. Size/stock must still be checked with the retailer. |
+| No spending control | The shared jobs reservation enforces the rolling per-user cap, including concurrent calls and community try-ons. |
 
-## Smaller known limits
-No delete, unshare or unlike. Chat history is lost on reload (looks stay in My looks). The user's own photo is kept in one browser's localStorage. No password reset, email verification or login rate limit. Web-search store links are sometimes Google redirect links that may expire. `lib/timescale-ca.ts` pins Timescale's CA, which expires in October 2027.
+Product preview downloads validate public HTTPS destinations, pin public IPv4 DNS results, revalidate redirects, and cap response sizes. Missing or blocked retailer photos show a labeled placeholder; generation can fall back to descriptions.
+
+## Main files
+
+- `lib/gemini.ts`: Gemini text/image/embedding calls; multimodal intent, extraction, shopping alternatives, try-ons and edits. OpenRouter text calls fall back to Google. Shopping gets a longer response timeout than ordinary text requests.
+- `lib/styling.ts`: shared shopping types, selection/budget validation, attachment limits.
+- `lib/product-image.ts`: bounded public retailer image downloads.
+- `app/api/chat/route.ts`: validates uploads, loads owned current looks, creates shopping previews, validates confirmations, then generates.
+- `app/(app)/studio/choices.tsx`: accessible product radio groups and budget-aware confirmation.
+- `lib/jobs.ts`, `lib/job-limit.ts`: asynchronous jobs and atomic request reservations.
+- `app/api/profile/route.ts`, `app/(app)/profile/`: saved preferences.
+- `app/api/looks/route.ts`, `app/(app)/feed/page.tsx`: personalized community order.
+- `scripts/check.ts`, `scripts/check-routes.mjs`, `scripts/check-product.mjs`, `scripts/check-db.ts`: offline provider/route checks and isolated database/API integration checks.
+
+Routes use `maxDuration = 300`; `after()` is still subject to the hosting platform's function limit. Polling lasts a little over five minutes. This is not a durable job queue. Check the deployment plan's timeout before publishing.
+
+## Verification and remaining limits
+
+Verified during this pass: production build, TypeScript, lint, deterministic provider/route tests, database/API tests (including concurrent cap and account isolation), actual browser selfie upload and four-photo attachment/removal, profile preference save, live shopping alternatives and selection totals, and one live photo-plus-text try-on. In that try-on only the requested top changed; jeans and sneakers were retained, and the receipt described the result.
+
+The first live shopping attempt got an unusable OpenRouter response followed by Google's quota limit. Search timeout and public error handling were improved; the retry returned three products under $100 and waited for confirmation. A final browser search displayed a real retailer preview after fixing bounded metadata reads and resizing photos with the already-installed Sharp library (now an explicit dependency). Provider availability and retailer bot restrictions can still interrupt searches or previews. Automated tests verify budget re-search, choice validation and generation only after confirmation.
+
+Generative edits are best-effort: a passing example cannot guarantee exact identity, product fidelity, or preservation on every image. Product prices and stock come from web search, not retailer checkout APIs. Hardware microphone recording, a live four-product composite, a live full $500 outfit, and deployment remain unverified.
+
+Unchanged backlog: chat history disappears on reload; selfies are browser-local; no delete/unshare/unlike; no password reset, email verification or login rate limit. Timescale CA expires in October 2027. These are outside the nine handoff fixes.
