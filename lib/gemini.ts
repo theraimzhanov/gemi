@@ -41,6 +41,12 @@ export class BusyError extends Error {
   }
 }
 
+export class PictureCreditError extends Error {
+  constructor() {
+    super("Gemi has run out of picture credits, so it cannot make a look right now.");
+  }
+}
+
 let client: GoogleGenAI | undefined;
 function create(params: Record<string, unknown>): Promise<Interaction> {
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -233,51 +239,61 @@ async function fetchProductImage(url?: string): Promise<Img | null> {
   }
 }
 
-function outputImage(r: Interaction): Img {
-  if (!r.output_image?.data) throw new Error(r.output_text || "The image model returned no image");
-  return { mime: r.output_image.mime_type ?? "image/png", data: r.output_image.data };
+// One place that makes a picture. Google's free tier refuses its image models, so when an OpenRouter key
+// is set the same Gemini image model is called through OpenRouter; otherwise Google is called directly.
+async function makeImage(prompt: string, images: Img[], aspect_ratio: string): Promise<Img> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    const r = await create({ model: IMAGE, input: [text(prompt), ...images.map(image)], response_format: { type: "image", aspect_ratio } });
+    if (!r.output_image?.data) throw new Error(r.output_text || "The image model returned no image");
+    return { mime: r.output_image.mime_type ?? "image/png", data: r.output_image.data };
+  }
+  const res = await fetch("https://openrouter.ai/api/v1/images", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: `google/${IMAGE}`,
+      prompt,
+      aspect_ratio,
+      input_references: images.map((i) => ({ type: "image_url", image_url: { url: `data:${i.mime};base64,${i.data}` } })),
+    }),
+    signal: AbortSignal.timeout(120_000),
+  }).catch(() => { throw new BusyError(); });
+  const body = await res.json().catch(() => null);
+  const out = body?.data?.[0];
+  if (res.status === 402) throw new PictureCreditError();
+  if (!res.ok || !out?.b64_json) throw Object.assign(new Error(body?.error?.message ?? "The image model returned no image"), { status: res.status });
+  return { mime: out.media_type ?? "image/png", data: out.b64_json };
 }
 
 export async function generateTryOn(person: Img, garments: Garment[], refs: Img[], onlyCategories?: string[]): Promise<Img> {
   const scope = onlyCategories?.length
     ? `Change only these parts of the outfit: ${onlyCategories.join(", ")}. Keep every other piece of clothing they are wearing exactly as it is.`
     : "Replace their whole outfit.";
-  const r = await create({
-    model: IMAGE,
-    input: [
-      text(
-        "The first image is a photo of a person. Dress this exact person in the garments listed below. " +
-          "Keep their face, hair, skin tone, body proportions, pose and background unchanged. " +
-          `${scope}\nGarments: ${describe(garments)}.\n` +
-          (refs.length
-            ? "The remaining images are reference pictures of those garments; match them closely and ignore any person shown in them. "
-            : "") +
-          "Output one photorealistic full-body image.",
-      ),
-      image(person),
-      ...refs.slice(0, 8).map(image),
-    ],
-    response_format: { type: "image", aspect_ratio: "3:4" },
-  });
-  return outputImage(r);
+  return makeImage(
+    "The first image is a photo of a person. Dress this exact person in the garments listed below. " +
+      "Keep their face, hair, skin tone, body proportions, pose and background unchanged. " +
+      `${scope}
+Garments: ${describe(garments)}.
+` +
+      (refs.length
+        ? "The remaining images are reference pictures of those garments; match them closely and ignore any person shown in them. "
+        : "") +
+      "Output one photorealistic full-body image.",
+    [person, ...refs.slice(0, 8)],
+    "3:4",
+  );
 }
 
 export async function editLook(current: Img, instruction: string): Promise<Img> {
-  const r = await create({
-    model: IMAGE,
-    input: [
-      text(
-        `Edit this image: ${instruction}. Change only that. Keep the person's face, body, pose, background and every other garment exactly the same.`,
-      ),
-      image(current),
-    ],
-    response_format: { type: "image", aspect_ratio: "3:4" },
-  });
-  return outputImage(r);
+  return makeImage(
+    `Edit this image: ${instruction}. Change only that. Keep the person's face, body, pose, background and every other garment exactly the same.`,
+    [current],
+    "3:4",
+  );
 }
 
 export async function generateImage(prompt: string, aspect_ratio = "3:4"): Promise<Img> {
-  return outputImage(await create({ model: IMAGE, input: [text(prompt)], response_format: { type: "image", aspect_ratio } }));
+  return makeImage(prompt, [], aspect_ratio);
 }
 
 export async function embed(content: string): Promise<number[]> {
