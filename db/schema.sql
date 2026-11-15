@@ -86,3 +86,6 @@ CREATE TABLE IF NOT EXISTS plans (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS plans_due_idx ON plans (status, run_at);
+
+-- "Clear chat" hides rows instead of deleting them, so clearing cannot reset the daily request cap.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false;

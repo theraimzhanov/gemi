@@ -7,7 +7,7 @@ export async function jobViews(userId: string, id?: number) {
     `SELECT j.id, j.status, j.result, j.error, j.request, j.created_at < now() - interval '6 minutes' AS stale,
             l.id AS look_id, l.garments, l.total_usd, l.shared
      FROM jobs j LEFT JOIN looks l ON l.id = (j.result->>'look_id')::bigint AND l.user_id = j.user_id
-     WHERE j.user_id = $1 ${id ? "AND j.id = $2" : ""} ORDER BY j.id DESC LIMIT 20`,
+     WHERE j.user_id = $1 AND NOT j.hidden ${id ? "AND j.id = $2" : ""} ORDER BY j.id DESC LIMIT 20`,
     id ? [userId, id] : [userId],
   );
   return rows.reverse().map((r) => {
@@ -32,7 +32,7 @@ export async function jobViews(userId: string, id?: number) {
 // The last few finished turns as plain text, so a follow-up like "cheaper" or "in black" can be understood.
 export async function recentTurns(userId: string): Promise<string> {
   const { rows } = await db.query(
-    "SELECT request, result, error FROM jobs WHERE user_id = $1 AND status <> 'working' ORDER BY id DESC LIMIT 6", [userId]);
+    "SELECT request, result, error FROM jobs WHERE user_id = $1 AND status <> 'working' AND NOT hidden ORDER BY id DESC LIMIT 6", [userId]);
   return rows.reverse().map((r) =>
     `User: ${r.request?.text || (r.request?.photos ? "(sent photos)" : "(no text)")}\n` +
     `Gemi: ${r.error ?? JSON.stringify(r.result?.intent ?? {}).slice(0, 300)}`).join("\n");

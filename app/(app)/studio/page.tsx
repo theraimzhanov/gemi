@@ -44,6 +44,7 @@ export default function Chat() {
   const [sentPhotos, setSentPhotos] = useState<Record<number, Img[]>>({}); // thumbnails for this visit only
   const [notice, setNotice] = useState("");
   const [sending, setSending] = useState(false);
+  const [menu, setMenu] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const selfieInput = useRef<HTMLInputElement>(null);
   const outfitInput = useRef<HTMLInputElement>(null);
@@ -142,6 +143,14 @@ export default function Chat() {
     }
   }
 
+  async function clearChat() {
+    setMenu(false);
+    if (!window.confirm("Clear this chat and start a new one? The messages are removed for good. Your looks stay in My looks.")) return;
+    const res = await fetch("/api/jobs", { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) return setNotice("The chat could not be cleared. Check your connection and try again.");
+    setJobs([]); setSentPhotos({}); setNotice("");
+  }
+
   const needSelfie = () => { setNotice("Add your photo first, using the person button below."); };
   const tryShared = (id: number) => (selfie ? submit(`/api/looks/${id}/tryon`, { selfie }) : needSelfie());
   const confirm = (shopping: Shopping & { job: number }, indices: number[]) =>
@@ -200,6 +209,17 @@ export default function Chat() {
                 <button key={idea} className={btnGhost} onClick={() => { setText(idea); promptBox.current?.focus(); }}>{idea}</button>
               ))}
             </div>
+          </div>
+        )}
+
+        {!!jobs?.length && (
+          <div className="sticky top-3 z-20 -mb-5 mr-auto">
+            <button className={`${iconBtn} bg-white shadow-sm`} onClick={() => setMenu((open) => !open)} aria-expanded={menu} aria-haspopup="menu" aria-label="Chat options" title="Chat options"><Icon name="more" className="size-6" /></button>
+            {menu && (
+              <div role="menu" className="absolute left-0 mt-2 w-44 rounded-2xl border border-line bg-white p-1 shadow-[0_8px_30px_rgb(27_23_34/0.12)]">
+                <button role="menuitem" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-berry hover:bg-mist" onClick={clearChat}><Icon name="trash" className="size-4" /> Clear chat</button>
+              </div>
+            )}
           </div>
         )}
 
