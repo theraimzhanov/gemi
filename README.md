@@ -6,6 +6,14 @@
 
 Buying clothes online is guesswork. You cannot see how a piece looks on you, you search many stores to stay inside a budget, and every store asks for your size and style again. Returns cost shoppers and stores time and money.
 
+The numbers (United States):
+
+- **About 1 in 4 clothes bought online is sent back.** The average online apparel return rate is 24.4%, about $38 billion a year ([Coresight Research, 2023](https://coresight.com/research/the-true-cost-of-apparel-returns/)).
+- **Size and fit is the top reason.** 53% of apparel brands and retailers name it as the main cause of online returns (same Coresight survey).
+- **Returns across all retail total $849.9 billion in 2025**, 15.8% of sales; for online sales the rate is 19.3% ([NRF and Happy Returns, 2025](https://nrf.com/media-center/press-releases/consumers-expected-to-return-nearly-850-billion-in-merchandise-in-2025)).
+
+How Gemi relates: the main cause is not knowing how a piece will look and fit on you before you pay. Gemi shows the item on your own photo, with your saved sizes and budget, before you buy.
+
 ## The solution
 
 Gemi is an autonomous AI stylist agent. You give it a photo of yourself and a request in text or voice; it does the rest on its own:
