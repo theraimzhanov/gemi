@@ -15,6 +15,14 @@ const TOOL_LABEL: Record<string, string> = {
   try_on: "Tried a community look on you",
 };
 const IDEAS = ["Find a red dress under $100", "I only need a blue top", "Find me an interview outfit a week before December 10"];
+// HackUTA theme: looks named after the Odyssey. Each is an ordinary request the agent searches, budgets and tries on.
+const ODYSSEY = [
+  ["Odysseus", "the long trip", "Find a rugged travel outfit for a long trip under $150"],
+  ["Penelope", "the elegant knit", "Find an elegant knit outfit under $120"],
+  ["Athena", "the big moment", "Find a sharp outfit for a big presentation under $200"],
+  ["Circe", "the evening", "Find an evening look that turns heads under $150"],
+  ["Ithaca", "the homecoming", "Find me an outfit for coming home for the holidays a week before December 20"],
+];
 
 // One request and its answer, as stored in the database. The chat is this list, so it survives leaving the page.
 type Job = {
@@ -209,6 +217,14 @@ export default function Chat() {
                 <button key={idea} className={btnGhost} onClick={() => { setText(idea); promptBox.current?.focus(); }}>{idea}</button>
               ))}
             </div>
+            <h2 className="mt-8 text-sm font-semibold uppercase tracking-widest text-berry">Dress for your odyssey</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {ODYSSEY.map(([name, moment, ask]) => (
+                <button key={name} className={btnGhost} title={ask} onClick={() => { setText(ask); promptBox.current?.focus(); }}>
+                  {name}<span className="font-normal text-mute">: {moment}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -247,7 +263,7 @@ export default function Chat() {
                     <p className="pulse-dots flex items-center gap-1.5 py-1">
                       <span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" />
                     </p>
-                    <p className="mt-1 text-sm text-mute">Working on it. This can take a few minutes. You can leave this page or close the tab; the answer will be here when you come back.</p>
+                    <p className="mt-1 text-sm text-mute">Gemi has set sail: searching, choosing and dressing you. This can take a few minutes. You can leave this page or close the tab; the answer will be here when you come back.</p>
                   </div>
                 )}
                 {j.status === "failed" && <p className={bubble}>{j.error ?? "Something went wrong making that. Try again."}</p>}

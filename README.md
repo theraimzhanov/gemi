@@ -18,6 +18,20 @@ Gemi is an autonomous AI stylist agent. You give it a photo of yourself and a re
 
 Built at **HackUTA 2026** (November 14–15, 2026) during the 24-hour hacking window.
 
+## Theme: Homer's Odyssey
+
+Getting dressed online is a long voyage through dozens of stores. Gemi makes that odyssey for you, the way Athena looked after Odysseus. Each thing the agent does on its own maps to a part of the story:
+
+| In the Odyssey | In Gemi |
+| --- | --- |
+| **Athena** changes how Odysseus looks before every big moment | Try-on: the clothes appear on your own photo |
+| **The voyage** from island to island | Shopping search: store to store, inside your budget |
+| **Ithaca**, the destination | Plans: an outfit ready for a date |
+| **Mentor**, the form Athena takes to guide the family | Preferences: Gemi remembers your sizes, style and likes |
+| **Penelope** keeps her loom going while Odysseus is away | Background jobs: Gemi works after you close the tab |
+
+The studio also offers five one-click Odyssey looks (Odysseus, Penelope, Athena, Circe, Ithaca). Each is a real request: the agent searches real products, keeps the budget and tries the outfit on you.
+
 ## Tools used
 
 | Tool | How we used it |

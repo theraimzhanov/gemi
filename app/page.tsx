@@ -31,7 +31,16 @@ function UseCase({ title, body, flip, children }: { title: string; body: string;
   );
 }
 
-const Caption = ({ children }: { children: React.ReactNode }) => <p className="mt-2 text-center text-sm font-medium">{children}</p>;
+// HackUTA theme: each thing the agent does on its own, paired with its part of Homer's Odyssey.
+const VOYAGE = [
+  ["Athena", "Tries it on you", "Athena changed how Odysseus looked before every big moment. Gemi puts the clothes on your own photo."],
+  ["The voyage", "Searches the stores", "Odysseus sailed from island to island. Gemi goes from store to store and returns with real items inside your budget."],
+  ["Ithaca", "Plans for a date", "Every voyage has a destination. Give Gemi a date and the outfit is ready when you arrive."],
+  ["Mentor", "Knows your taste", "Athena guided the family as Mentor, the old friend who knew them. Gemi remembers your sizes, your style and the looks you like."],
+  ["Penelope", "Works while you are away", "Penelope kept her loom going while Odysseus was gone. Gemi keeps working after you close the tab."],
+];
+
+const Caption =({ children }: { children: React.ReactNode }) => <p className="mt-2 text-center text-sm font-medium">{children}</p>;
 
 // Every request reads the login cookie, so this route renders on the server instead of from a static shell.
 export const instant = false;
@@ -51,6 +60,7 @@ export default async function Landing() {
       <main className="mx-auto w-full max-w-6xl space-y-24 px-5 pb-24 md:space-y-32">
         <section className="grid items-center gap-10 md:grid-cols-[1.05fr_1fr]">
           <div className="py-6">
+            <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-berry">Athena dressed Odysseus. Gemi dresses you.</p>
             <h1 className={`${display} text-6xl leading-[0.95] md:text-8xl`}>Try it on before you buy it.</h1>
             <p className="mt-6 max-w-md text-lg leading-8 text-mute">
               Show Gemi a photo, type what you want, or just say it. It finds real clothes, dresses you in them and hands you the receipt.
@@ -65,6 +75,20 @@ export default async function Landing() {
             <Column from={1} reverse />
             <Column from={2} />
           </div>
+        </section>
+
+        <section>
+          <h2 className={`${display} max-w-3xl text-4xl md:text-5xl`}>Gemi makes the odyssey. You stay home.</h2>
+          <p className="mt-4 max-w-2xl text-lg leading-8 text-mute">Getting dressed online is a long voyage: dozens of stores, sizes and prices. Gemi is an agent that sails it for you, the way Athena looked after Odysseus.</p>
+          <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {VOYAGE.map(([myth, does, why]) => (
+              <li key={myth} className="rounded-3xl bg-mist p-5">
+                <p className="text-sm font-semibold uppercase tracking-widest text-berry">{myth}</p>
+                <h3 className={`${display} mt-2 text-xl`}>{does}</h3>
+                <p className="mt-2 text-sm leading-6 text-mute">{why}</p>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <UseCase title="Copy a whole outfit from one photo" body="See a look you love on someone else? Upload the picture. Gemi finds every piece in it, from jacket to shoes, and puts all of it on you in one go.">
