@@ -61,15 +61,23 @@ try {
   assert.match(calls.at(-1)!.prompt, /keep my glasses/);
 
   queue = [answer("expensive"), answer({ garments: [garment("top", 40), garment("shoes", 40)] }), answer("cheaper"), answer({ garments: [garment("top", 20), garment("shoes", 30)] })];
-  const result = await shopGarments("outfit", 50, ["top", "shoes"], "menswear, M");
+  const result = await shopGarments("outfit", 50, ["top", "shoes"], "menswear, M", async () => photo);
+  assert.ok(result.candidates.every((c) => c.image));
   assert.equal(selectCandidates(result, cheapestSelection(result)).length, 2);
   assert.ok(calls.some((c) => JSON.stringify(c).includes("menswear, M")));
   assert.ok(calls.some((c) => JSON.stringify(c).includes("previous search was over budget")));
 
   queue = [answer("too expensive"), answer({ garments: [garment("top", 100)] }), answer("still expensive"), answer({ garments: [garment("top", 100)] })];
-  await assert.rejects(() => shopGarments("top", 10, ["top"]), ShoppingError);
+  await assert.rejects(() => shopGarments("top", 10, ["top"], "", async () => photo), ShoppingError);
+
+  // A product whose page or photo does not load is never offered.
+  queue = [answer("two tops"), answer({ garments: [garment("top", 20, "dead-link"), garment("top", 25, "works")] })];
+  const openOnly = await shopGarments("top", 50, ["top"], "", async (url) => (url?.includes("dead") ? null : photo));
+  assert.deepEqual(openOnly.candidates.map((c) => c.garment.description), ["works"]);
+  queue = [answer("a"), answer({ garments: [garment("top", 20)] }), answer("b"), answer({ garments: [garment("top", 20)] })];
+  await assert.rejects(() => shopGarments("top", 50, ["top"], "", async () => null), ShoppingError);
   queue = [answer({ garments: [{ ...garment("top", 1), price_usd: "bad" }] })];
   await assert.rejects(() => extractGarments(photo), /Invalid garment response/);
   assert.equal(queue.length, 0);
-  console.log("ok multimodal routing, all references, generation instructions, budget re-search and model-output validation");
+  console.log("ok multimodal routing, all references, generation instructions, budget re-search, photo-only products and model-output validation");
 } finally { globalThis.fetch = originalFetch; }

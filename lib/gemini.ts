@@ -273,6 +273,7 @@ export async function shopGarments(
   budget: number | undefined,
   categories: string[],
   preferences = "",
+  photoOf = fetchProductImage,
 ): Promise<Shopping> {
   if (budget !== undefined && (!Number.isFinite(budget) || budget <= 0)) throw new Error("Invalid budget");
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -281,10 +282,10 @@ export async function shopGarments(
       tools: [{ type: "google_search" }],
       input:
         `Find real clothes currently for sale online for this request: ${JSON.stringify(request)}. ` +
-        `Offer up to three different products per category: ${categories.join(", ") || "the categories needed for this request"}. ` +
-        (budget !== undefined ? `A complete selection of one item per category MUST fit a TOTAL budget of $${budget} USD, before tax/shipping. ${attempt ? "The previous search was over budget or incomplete. Search cheaper retailers and complete every requested category. " : ""}` : "") +
+        `Offer up to five different products per category: ${categories.join(", ") || "the categories needed for this request"}. ` +
+        (budget !== undefined ? `A complete selection of one item per category MUST fit a TOTAL budget of $${budget} USD, before tax/shipping. ${attempt ? "The previous search was over budget, incomplete, or its links did not open. Search cheaper retailers, use other stores and complete every requested category. " : ""}` : "") +
         `Shopping preferences (never infer gender from a photo): ${preferences || "Unspecified; prefer unisex where appropriate"}. ` +
-        "The explicit request takes priority over style preferences. Give each product's name, color, current USD price and direct retailer product-page URL. Do not invent prices or URLs. Mention size availability only if verified. Keep the answer concise.",
+        "The explicit request takes priority over style preferences. Give each product's name, color, current USD price and direct retailer product-page URL: the page of that one product, never a category, collection or search page. Do not invent prices or URLs. Mention size availability only if verified. Keep the answer concise.",
     });
     const raw = await garmentJson(
       "Convert the shopping answer to garments, preserving ALL alternatives. Use only stated USD prices and exact product URLs. " +
@@ -294,20 +295,20 @@ export async function shopGarments(
       (!categories.length || categories.includes(g.category)) && typeof g.description === "string" && typeof g.color === "string" &&
       Number.isFinite(g.price_usd) && g.price_usd > 0 && !g.price_is_estimate && publicProductUrl(g.url));
     const needed = categories.length ? [...new Set(categories)] : [...new Set(garments.map((g) => g.category))];
-    const candidates = needed.flatMap((category) => garments.filter((g) => g.category === category)
-      .filter((g, i, all) => all.findIndex((other) => other.url === g.url) === i).slice(0, 3).map((garment) => ({ garment })));
+    // Only offer products whose store page opens and has a photo; a dead link or blocked store is dropped.
+    const opened = await Promise.all(needed.flatMap((category) => garments.filter((g) => g.category === category)
+      .filter((g, i, all) => all.findIndex((other) => other.url === g.url) === i).slice(0, 5)
+      .map(async (garment) => ({ garment, image: await photoOf(garment.url) }))));
+    const candidates = needed.flatMap((category) => opened
+      .flatMap((c) => (c.image && c.garment.category === category ? [{ garment: c.garment, image: c.image }] : [])).slice(0, 3));
     const shopping: Shopping = { request, budget, categories: needed, candidates };
     try {
       if (!needed.length) throw new Error("No priced products");
       selectCandidates(shopping, cheapestSelection(shopping));
     } catch { continue; }
-    await Promise.all(shopping.candidates.map(async (candidate) => {
-      const photo = await fetchProductImage(candidate.garment.url);
-      if (photo) candidate.image = photo;
-    }));
     return shopping;
   }
-  throw new ShoppingError("I couldn't find a complete set with listed prices within your budget. Try a higher budget or fewer pieces.");
+  throw new ShoppingError("I couldn't find a complete set with working store pages, photos and prices within your budget. Try again, or try a higher budget or fewer pieces.");
 }
 
 export class ShoppingError extends Error {}

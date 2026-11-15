@@ -28,7 +28,7 @@ The branch must remain unmerged until the owner approves it.
 | No shopping profile | Optional department/gender, sizes and style are saved in Profile and included in shopping. Explicit requests take priority. Size/stock must still be checked with the retailer. |
 | No spending control | The shared jobs reservation enforces the rolling per-user cap, including concurrent calls and community try-ons. |
 
-Product preview downloads validate public HTTPS destinations, pin public IPv4 DNS results, revalidate redirects, and cap response sizes. Missing or blocked retailer photos show a labeled placeholder; generation can fall back to descriptions.
+Product preview downloads validate public HTTPS destinations, pin public IPv4 DNS results, revalidate redirects, and cap response sizes. Products whose store page does not open or has no usable photo are not offered at all (`shopGarments` checks up to five per category and keeps three); if a category is left empty the search is retried once, then fails with a clear message.
 
 ## Main files
 

@@ -30,7 +30,7 @@ export function Choices({ shopping, busy, onConfirm }: {
       </div>
     </fieldset>)}
     <p className="font-semibold">Selected items: {money(total)}{shopping.budget !== undefined && ` / ${money(shopping.budget)} budget`}</p>
-    <p className="text-xs text-mute">Before tax and shipping. Check current price, size and stock at the store. Photos may be unavailable.</p>
+    <p className="text-xs text-mute">Before tax and shipping. Check current price, size and stock at the store.</p>
     {error && <p role="status" className="text-sm text-berry">{error}</p>}
     <button className={btn} disabled={busy || !!error} onClick={() => onConfirm(selected)}>Try these on</button>
   </div>;
