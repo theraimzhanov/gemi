@@ -33,10 +33,10 @@ export function Icon({ name, className = "size-5", fill = false }: { name: IconN
 
 export function Logo({ href = "/" }: { href?: string }) {
   return (
-    <Link href={href} className={`${display} flex items-center gap-2 text-2xl`}>
+    <Link href={href} className={`${display} flex items-center gap-1 text-2xl`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- local vector brand mark */}
-      <img src="/icon.svg" alt="" width={48} height={48} className="size-12 shrink-0" />
-      Gemi
+      <img src="/icon.svg" alt="" width={80} height={80} className="size-20 shrink-0" />
+      gemi
     </Link>
   );
 }
