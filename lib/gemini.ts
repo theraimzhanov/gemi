@@ -21,6 +21,9 @@ export type Intent =
   | { tool: "shop_and_dress"; request: string; budget_usd?: number; categories: string[] }
   | { tool: "micro_edit"; instruction: string }
   | { tool: "find_similar"; query: string }
+  | { tool: "plan_later"; request: string; budget_usd?: number; categories: string[]; run_at: string; note?: string }
+  | { tool: "plan_status" }
+  | { tool: "cancel_plans" }
   | { tool: "none"; message: string };
 
 export const CATEGORIES = ["top", "bottom", "dress", "outerwear", "shoes", "accessory"];
@@ -187,7 +190,8 @@ export async function routeIntent(input: {
       "Act whenever the request names a kind of clothing or an occasion: pick sensible categories yourself and do not ask about color, size or budget. " +
       "Use reply only for greetings, questions about what you can do, or a request so vague you cannot tell what clothing is wanted; then ask ONE short question. " +
       "Resolve follow-ups such as 'cheaper', 'another one' or 'in black' with the earlier conversation, and write request, instruction and query as complete standalone sentences. " +
-      "Answer in English.\n" +
+      "When the user wants the shopping done LATER or before a future event ('next week', 'in a month', 'before my interview on December 10', 'remind me'), use plan_later, never shop_and_dress. " +
+      `Answer in English. Now: ${new Date().toString()}.\n` +
       (input.wearing ? `The user's current look: ${input.wearing}\n` : "") +
       (input.history ? `Earlier conversation, oldest first:\n${input.history}` : ""),
     input: [
@@ -218,6 +222,20 @@ export async function routeIntent(input: {
         ["instruction"],
       ),
       fn("find_similar", "Find looks in the community feed similar to a description.", { query: str }, ["query"]),
+      fn(
+        "plan_later",
+        "Save a shopping search that Gemi will run by itself on a future date, with the results left in the chat.",
+        {
+          request: { ...str, description: "What to look for, as a complete standalone sentence in English" },
+          budget_usd: { type: "number", description: "Total budget in USD, if the user gave one" },
+          categories: { type: "array", items: { ...str, enum: CATEGORIES } },
+          run_at: { ...str, description: "When to run the search: ISO 8601 date and time with the UTC offset shown in Now. If the user only gave an event date, use one week before it, or tomorrow if that has passed." },
+          note: { ...str, description: "The event or reason, like 'interview on December 10'" },
+        },
+        ["request", "categories", "run_at"],
+      ),
+      fn("plan_status", "The user asks about saved plans or reminders, or whether a planned search has started or finished.", {}, []),
+      fn("cancel_plans", "Cancel every saved plan that has not started yet.", {}, []),
       fn("reply", "Say something to the user without doing any styling: answer a question or ask one short clarifying question.", { message: str }, ["message"]),
     ],
   });
@@ -235,6 +253,19 @@ export async function routeIntent(input: {
       };
     case "micro_edit":
       return { tool: "micro_edit", instruction: String(a.instruction ?? "") };
+    case "plan_later":
+      return {
+        tool: "plan_later",
+        request: String(a.request ?? ""),
+        budget_usd: a.budget_usd == null ? undefined : Number(a.budget_usd),
+        categories: (Array.isArray(a.categories) ? (a.categories as string[]) : []).filter((c) => CATEGORIES.includes(c)),
+        run_at: String(a.run_at ?? ""),
+        note: a.note == null ? undefined : String(a.note),
+      };
+    case "plan_status":
+      return { tool: "plan_status" };
+    case "cancel_plans":
+      return { tool: "cancel_plans" };
     case "find_similar":
       return { tool: "find_similar", query: String(a.query ?? "") };
     default:

@@ -26,6 +26,7 @@ const mocks = {
   '@/lib/db': mock('export const db = { query: (...args) => s.query(...args) }; export const toVector = JSON.stringify;'),
   '@/lib/jobs': mock('export async function startJob(user, work) { return Response.json(await work(1)); }'),
   '@/lib/job-views': mock('export async function recentTurns() { return ""; }'),
+  '@/lib/plans': mock('export async function savePlan(user, plan) { s.planned = plan; return "saved"; } export async function planStatus() { return "not started"; } export async function cancelPlans() { return "cancelled"; }'),
   '@/lib/looks': mock('export async function saveLook(user, image, garments, refs) { s.saved.push({image, garments, refs}); return 123; }'),
   '@/lib/gemini': mock(`
     export async function routeIntent(input) { s.routed = input; return s.intent; }
@@ -88,6 +89,13 @@ assert.equal((await post({ currentId: 42, selection: { job: 9, indices: [999] } 
 state.shopping.budget = 1;
 assert.equal((await post({ currentId: 42, selection: { job: 9, indices: [0] } })).status, 400);
 state.current = null;
+state.intent = { tool: 'plan_later', request: 'navy suit', categories: ['outerwear'], run_at: '2030-01-01T09:00:00Z' };
+response = await post({ text: 'find me a suit a week before my interview' });
+assert.equal((await response.json()).intent.message, 'saved');
+assert.equal(state.planned.request, 'navy suit');
+assert.equal(state.generated.length, 1, 'a plan must not search or generate now');
+state.intent = { tool: 'plan_status' };
+assert.equal((await (await post({ text: 'did you start?' })).json()).intent.message, 'not started');
 assert.equal((await post({ currentId: 42, text: 'change it' })).status, 404);
 state.user = null;
 assert.equal((await post({ text: 'hello' })).status, 401);

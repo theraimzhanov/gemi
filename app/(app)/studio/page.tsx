@@ -14,7 +14,7 @@ const TOOL_LABEL: Record<string, string> = {
   find_similar: "Matched looks from the community",
   try_on: "Tried a community look on you",
 };
-const IDEAS = ["Find a red dress under $100", "I only need a blue top", "Show me looks like streetwear with white sneakers"];
+const IDEAS = ["Find a red dress under $100", "I only need a blue top", "Find me an interview outfit a week before December 10"];
 
 // One request and its answer, as stored in the database. The chat is this list, so it survives leaving the page.
 type Job = {
@@ -53,10 +53,11 @@ export default function Chat() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only state, loaded after mount
     setSelfie(loadSelfie());
-    fetch("/api/jobs")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setJobs)
-      .catch(() => { setJobs([]); setNotice("Your earlier chat did not load. Check your connection and reload the page."); });
+    const load = () => fetch("/api/jobs").then((r) => (r.ok ? r.json() : Promise.reject())).then(setJobs);
+    load().catch(() => { setJobs([]); setNotice("Your earlier chat did not load. Check your connection and reload the page."); });
+    // Planned searches finish on their own, so look for new answers now and then.
+    const timer = setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   // Work continues on the server whether or not this page is open; while it is open, ask how it is going.

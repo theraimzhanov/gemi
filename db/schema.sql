@@ -70,3 +70,19 @@ CREATE INDEX IF NOT EXISTS jobs_user_created_idx ON jobs (user_id, created_at DE
 
 -- What the user asked, so the chat can be rebuilt after leaving the page or closing the browser.
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS request jsonb NOT NULL DEFAULT '{}';
+
+-- A shopping search saved to run by itself on a later date (before an event, in a week, next month).
+CREATE TABLE IF NOT EXISTS plans (
+  id         bigserial PRIMARY KEY,
+  user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  request    text NOT NULL,
+  budget_usd numeric,
+  categories jsonb NOT NULL DEFAULT '[]',
+  note       text NOT NULL DEFAULT '',
+  run_at     timestamptz NOT NULL,
+  status     text NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'running', 'done', 'failed', 'cancelled')),
+  claimed_at timestamptz,
+  job_id     bigint,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS plans_due_idx ON plans (status, run_at);

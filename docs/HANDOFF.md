@@ -62,3 +62,10 @@ Unchanged backlog: selfies are browser-local; no delete/unshare/unlike; no passw
 - The router is given the last six turns and the current outfit, and has a `reply` tool to ask one question when a request is too vague.
 - Pictures download from `/api/img/:id?download` (Chat and My looks).
 - Verified live on 2026-11-15 with the demo account: three reference photos plus instructions; a spoken request (synthesised WAV posted to the API, not a real microphone); a vague message, the follow-up answer, web search, choosing a dress and trying it on. Two of the jobs were left running while on another screen and were complete on return.
+
+## Own style and saved plans (added last)
+
+- **Own style:** a shared look already belongs to its owner (`looks.user_id`, `shared`, `garments`). `lib/shop.ts` now passes the user's five latest shared looks, their liked looks and their Profile preferences to every shopping search.
+- **Saved plans:** "find me X in a week / before my interview on December 10" is routed to `plan_later` and stored in the `plans` table (request, budget, categories, note, `run_at`, status). `plan_status` answers "did you start?" ("I have not started yet…"), `cancel_plans` cancels the waiting ones. Code: `lib/plans.ts`.
+- **What runs a due plan** (`runDuePlans`, each plan is claimed by one caller): a one-minute timer started in `instrumentation.ts` (needs a server that stays up, and a restart to begin); `GET /api/cron` for a host scheduler (`vercel.json` calls it once a day, the most the free Vercel plan allows; set `CRON_SECRET` there); and any load of the chat. The result is a normal chat row with product choices.
+- Verified live on 2026-11-15: a plan saved for two minutes ahead, "did you start?" answered "not started", then the search ran by itself and left two products with photos. That run was started by the chat-load trigger; the one-minute timer and the cron route were not exercised. Dates are shown in the server's time zone.

@@ -1,9 +1,11 @@
 import { currentUser } from "@/lib/auth";
 import { db, toVector } from "@/lib/db";
-import { describe, editLook, embed, extractGarments, generateTryOn, routeIntent, shopGarments, totalUsd, transcribe, type Garment, type Img, type Intent } from "@/lib/gemini";
+import { describe, editLook, embed, extractGarments, generateTryOn, routeIntent, totalUsd, transcribe, type Garment, type Img, type Intent } from "@/lib/gemini";
 import { recentTurns } from "@/lib/job-views";
 import { startJob } from "@/lib/jobs";
 import { saveLook } from "@/lib/looks";
+import { cancelPlans, planStatus, savePlan } from "@/lib/plans";
+import { shopForUser } from "@/lib/shop";
 import { bad, fail, isImg, UserError } from "@/lib/validate";
 import { MAX_PHOTOS, MAX_UPLOAD_B64, selectCandidates, type Shopping } from "@/lib/styling";
 
@@ -92,13 +94,11 @@ export async function POST(req: Request) {
         case "shop_and_dress": {
           if (intent.budget_usd !== undefined && (!Number.isFinite(intent.budget_usd) || intent.budget_usd <= 0))
             throw new UserError("Use a positive budget in USD.");
-          const profile = await db.query("SELECT preferences FROM users WHERE id = $1", [user.id]);
-          const liked = await db.query(
-            "SELECT l.garments FROM looks l WHERE l.shared AND EXISTS (SELECT 1 FROM look_events e WHERE e.look_id = l.id AND e.user_id = $1 AND e.kind = 'like') ORDER BY l.created_at DESC LIMIT 5", [user.id]);
-          const preferences = JSON.stringify(profile.rows[0].preferences) + "; Examples of liked styles: " + liked.rows.map((l) => describe(l.garments)).join(" / ");
-          const shopping = await shopGarments(intent.request, intent.budget_usd, intent.categories, preferences);
-          return { intent: { ...intent, message: "Are these what you had in mind? Choose one item per category, then try them on. Prices exclude tax and shipping; check size and availability at the store." }, shopping };
+          return shopForUser(user.id, intent.request, intent.budget_usd, intent.categories);
         }
+        case "plan_later": return { intent: { tool: "plan", message: await savePlan(user.id, intent) } };
+        case "plan_status": return { intent: { tool: "plan", message: await planStatus(user.id) } };
+        case "cancel_plans": return { intent: { tool: "plan", message: await cancelPlans(user.id) } };
         case "micro_edit": {
           if (!current) throw new UserError("Make a look first, then ask for a change.");
           const image = await editLook(current.image, intent.instruction);
