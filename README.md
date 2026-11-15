@@ -1,55 +1,33 @@
 # Gemi
 
-Gemi is an AI stylist. Upload a photo of yourself, then try clothes on it: from reference photos, from a text or voice request, from a shopping search with a budget, or from looks other people shared.
+## The problem
+
+Buying clothes online is guesswork. You cannot see how a piece looks on you, you search many stores to stay inside a budget, and every store asks for your size and style again. Returns cost shoppers and stores time and money.
+
+## The solution
+
+Gemi is an autonomous AI stylist agent. You give it a photo of yourself and a request in text or voice; it does the rest on its own:
+
+- **Tries clothes on you.** From reference photos, a shopping result or a look someone shared. It changes only the pieces you asked for and keeps the rest of your outfit.
+- **Searches for clothes.** It searches the web, offers up to three real products per category with photo, price and store link, and keeps the total inside your budget.
+- **Plans.** Save a request for a date (for example an outfit for an event) and Gemi runs it that day.
+- **Knows your preferences.** It uses your saved sizes, department and style, and learns your taste from the looks you like to rank the community feed and guide shopping.
+- **Works in the background.** Every request is a job in the database. Close the tab and come back to the result and the chat history.
 
 Built at **HackUTA 2026** (November 14–15, 2026) during the 24-hour hacking window.
 
-## What it does
-
-- **Try-on from photos.** Add up to 13 reference photos of clothes. Gemi changes only the pieces you asked for and keeps the rest of your outfit.
-- **Shop by text or voice.** Say "a fall outfit under $100". Gemi searches the web, offers up to three real products per category with photo, price and store link, checks them against your budget, and renders the try-on only after you pick.
-- **Small edits.** "Make the jacket black" re-renders the look and updates the receipt.
-- **Community feed.** Share a look, like others, and try a shared look on yourself. The **For you** tab ranks looks by similarity to the ones you liked.
-- **Profile.** Saved sizes, department and style are used in every shopping search.
-- **Saved plans.** Save a request to run on a date; a daily cron job runs it.
-- **Background jobs.** Every request is a job stored in the database, so you can leave the page and come back to the result and the chat history.
-
 ## Tools used
 
-### AI coding tools
-
 | Tool | How we used it |
 | --- | --- |
-| **Claude Code** | Main coding agent. Wrote most of the app: the Gemini pipeline, database schema, auth, jobs, screens and tests. Its commits carry a `Co-Authored-By: Claude` line. |
-| **OpenAI Codex** | Second agent for a review-and-fix pass on the `codex/hackathon-styling-fixes` branch (merged as PR #1): multi-photo uploads, product choices, budget checks, personalization and usage limits. |
-
-### AI models and APIs
-
-| Tool | How we used it |
-| --- | --- |
-| **Gemini API** (`@google/genai`) | `gemini-3.8-flash` (fallback `gemini-3.6-flash`) for intent routing, garment extraction and shopping search; `gemini-nano-banana-2.1` for try-on images and edits; `gemini-embedding-2` for look embeddings. |
-| **OpenRouter** | Optional first route for text and image calls, falling back to Google directly. |
-
-### Data and backend
-
-| Tool | How we used it |
-| --- | --- |
-| **Tiger Data** (Timescale Postgres) | The only database: users, sessions, looks, jobs, plans. `look_events` is a hypertable; `pgvector` with an HNSW index powers the For you ranking. |
-| **Next.js 16** (App Router) + **React 19** | Pages and API routes. Background work runs in `after()`. |
-| **Tailwind CSS 4** | Styling. |
-| **sharp** | Resizes uploads and retailer product photos. |
-| **pg** | Database driver, with verified TLS. |
-| **Vercel Cron** (`vercel.json`) | Daily trigger for saved plans. |
-| **TypeScript**, **ESLint** | Types and lint. |
-
-## How it works
-
-1. The browser sends your text, voice recording and photos to `POST /api/chat`.
-2. The server reserves a job (40 requests per user per rolling 24 hours by default) and answers at once.
-3. In the background, Gemini reads the request, extracts garments or searches for products, and renders the try-on.
-4. The result is saved to Tiger Data. The page polls `/api/jobs` and shows it.
-
-Main files: [lib/gemini.ts](lib/gemini.ts) (model calls), [lib/shop.ts](lib/shop.ts) and [lib/styling.ts](lib/styling.ts) (shopping and budget), [lib/jobs.ts](lib/jobs.ts) (jobs), [db/schema.sql](db/schema.sql) (schema), [app/api/chat/route.ts](app/api/chat/route.ts) (entry point). More detail in [docs/HANDOFF.md](docs/HANDOFF.md).
+| **Claude Code** | Main coding agent. Wrote most of the app: the model pipeline, database schema, auth, jobs, screens and tests. |
+| **OpenAI Codex** | Second coding agent, for a review-and-fix pass (branch `codex/hackathon-styling-fixes`, merged as PR #1). |
+| **Gemini models via OpenRouter** | Most model calls go through OpenRouter: `gemini-3.8-flash` for understanding requests, reading garments and web shopping search, and `gemini-nano-banana-2.1` for try-on images and edits. |
+| **Gemini API** (`@google/genai`) | `gemini-embedding-2` for look embeddings, and the fallback when an OpenRouter call fails. |
+| **Tiger Data** (Timescale Postgres) | The only database: users, looks, jobs, plans. A hypertable stores look events; `pgvector` powers the For you ranking. |
+| **Next.js 16**, **React 19**, **Tailwind CSS 4** | App, API routes and styling. |
+| **sharp**, **pg** | Image resizing and the database driver. |
+| **Vercel Cron** | Daily trigger for saved plans. |
 
 ## Run it locally
 
@@ -64,11 +42,9 @@ Requires Node 24 or newer.
 2. Create `.env.local` (it is git-ignored; never commit keys):
 
    ```
+   OPENROUTER_API_KEY=
    GEMINI_API_KEY=
    DATABASE_URL=
-   OPENROUTER_API_KEY=   # optional
-   DAILY_JOB_LIMIT=      # optional, default 40
-   CRON_SECRET=          # optional, protects /api/cron
    ```
 
 3. Create the tables:
@@ -83,17 +59,6 @@ Requires Node 24 or newer.
    npm run dev
    ```
 
-## Tests
+## License
 
-```bash
-npm test
-```
-
-Runs offline checks of the model pipeline, routes and product-photo downloads; no paid generations. `npm run test:db` also checks the database and API against a running local server.
-
-## Known limits
-
-- Generated try-ons are best-effort; identity and product details are not exact on every image.
-- Prices and stock come from web search, not retailer checkout. Check size and stock with the store.
-- No password reset or email verification.
-- Demoed from a laptop; not deployed.
+[MIT](LICENSE)
