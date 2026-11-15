@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { Img } from "@/lib/gemini";
-import { blobToWav, fileToImg, takeHandoff, loadSelfie, post, postJob, saveSelfie, src, type FeedLook, type Look } from "@/lib/client";
+import type { Garment, Img } from "@/lib/gemini";
+import { blobToWav, fileToImg, loadSelfie, post, saveSelfie, src, type FeedLook } from "@/lib/client";
 import { btn, btnGhost, describeLook, display, Icon, iconBtn, LookCard, Receipt } from "../../ui";
 import { useMe } from "../shell";
 import { MAX_PHOTOS, MAX_UPLOAD_B64, type Shopping } from "@/lib/styling";
@@ -16,18 +16,21 @@ const TOOL_LABEL: Record<string, string> = {
 };
 const IDEAS = ["Find a red dress under $100", "I only need a blue top", "Show me looks like streetwear with white sneakers"];
 
-type Reply = Partial<Look> & { intent: { tool: string; message?: string }; similar?: FeedLook[]; shopping?: Shopping & { job: number } };
-type Msg =
-  | { from: "you"; text: string; outfits?: Img[]; voice?: boolean }
-  | { from: "gemi"; note: string; look?: Look; similar?: FeedLook[]; shopping?: Shopping & { job: number } };
+// One request and its answer, as stored in the database. The chat is this list, so it survives leaving the page.
+type Job = {
+  id: number;
+  status: "working" | "done" | "failed";
+  error?: string;
+  request: { text?: string; photos?: number; voice?: boolean };
+  reply?: {
+    intent: { tool: string; message?: string };
+    look?: { id: number; shared: boolean; garments: Garment[]; total_usd: number };
+    similar?: FeedLook[];
+    shopping?: Shopping & { job: number };
+  };
+};
 
-const toMsg = (r: Reply): Msg => ({
-  from: "gemi",
-  note: r.intent.message ?? TOOL_LABEL[r.intent.tool] ?? "Done",
-  look: r.image && r.garments ? { id: r.id, shared: r.shared, image: r.image, garments: r.garments, refs: r.refs ?? [], total_usd: r.total_usd ?? 0 } : undefined,
-  similar: r.similar,
-  shopping: r.shopping,
-});
+const bubble = "w-fit rounded-3xl rounded-bl-md bg-mist px-5 py-3";
 
 export default function Chat() {
   const me = useMe();
@@ -37,8 +40,10 @@ export default function Chat() {
   const [text, setText] = useState("");
   const [audio, setAudio] = useState<Img | null>(null);
   const [recording, setRecording] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [sentPhotos, setSentPhotos] = useState<Record<number, Img[]>>({}); // thumbnails for this visit only
+  const [notice, setNotice] = useState("");
+  const [sending, setSending] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const selfieInput = useRef<HTMLInputElement>(null);
   const outfitInput = useRef<HTMLInputElement>(null);
@@ -46,41 +51,62 @@ export default function Chat() {
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Browser-only state, so it has to load after mount.
-    /* eslint-disable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only state, loaded after mount
     setSelfie(loadSelfie());
-    const handed = takeHandoff();
-    if (handed) setMsgs([{ from: "gemi", note: TOOL_LABEL.try_on, look: handed }]);
-    /* eslint-enable react-hooks/set-state-in-effect */
+    fetch("/api/jobs")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(setJobs)
+      .catch(() => { setJobs([]); setNotice("Your earlier chat did not load. Check your connection and reload the page."); });
   }, []);
+
+  // Work continues on the server whether or not this page is open; while it is open, ask how it is going.
+  const working = jobs?.filter((j) => j.status === "working").map((j) => j.id).join(",") ?? "";
+  useEffect(() => {
+    if (!working) return;
+    const timer = setInterval(async () => {
+      for (const id of working.split(",")) {
+        const res = await fetch(`/api/jobs/${id}`).catch(() => null);
+        if (!res?.ok) continue; // a dropped connection: keep waiting, the job carries on without us
+        const job: Job = await res.json();
+        setJobs((js) => js && js.map((j) => (j.id === job.id ? job : j)));
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [working]);
+
   // Braces matter: newer browsers return a Promise from scrollIntoView, which an effect must not return.
-  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [jobs?.length, working, notice]);
 
-  let current: Look | undefined; // the newest look is what follow-up edits apply to
-  for (const m of msgs) if (m.from === "gemi" && m.look) current = m.look;
-  const say = (note: string) => setMsgs((m) => [...m, { from: "gemi", note }]);
+  const busy = sending || !!working;
+  // The newest look is what follow-up edits apply to.
+  const current = jobs?.findLast((j) => j.reply?.look)?.reply?.look;
 
-  async function run(job: () => Promise<Reply>) {
-    setBusy(true);
+  async function submit(url: string, body: unknown, photos: Img[] = []) {
+    setNotice("");
+    setSending(true);
     try {
-      const reply = toMsg(await job());
-      setMsgs((m) => [...m, reply]);
+      const { job } = await post<{ job: number }>(url, body);
+      const view: Job = await fetch(`/api/jobs/${job}`).then((r) => r.json());
+      if (photos.length) setSentPhotos((p) => ({ ...p, [job]: photos }));
+      setJobs((js) => [...(js ?? []), view]);
+      return true;
     } catch (e) {
-      say(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      setNotice(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      return false;
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   }
 
   const canSend = !busy && !uploading && !recording && (!!outfits.length || !!text.trim() || !!audio);
-  function send() {
+  async function send() {
     if (!canSend) return;
     if ([...outfits, selfie, audio].reduce((sum, image) => sum + (image?.data.length ?? 0), 0) > MAX_UPLOAD_B64)
-      return say("These attachments are too large together. Use fewer photos or a shorter recording.");
+      return setNotice("These attachments are too large together. Use fewer photos or a shorter recording.");
     const sent = { selfie, outfits, text, audio, currentId: current?.id };
-    setMsgs((m) => [...m, { from: "you", text: text.trim(), outfits, voice: !!audio }]);
     setText(""); setAudio(null); setOutfits([]);
-    run(() => postJob<Reply>("/api/chat", sent));
+    // Nothing was saved if this fails, so give the request back to edit and resend.
+    if (!(await submit("/api/chat", sent, outfits))) { setText(sent.text); setAudio(sent.audio); setOutfits(sent.outfits); }
   }
 
   async function toggleMic() {
@@ -94,31 +120,31 @@ export default function Chat() {
         stream.getTracks().forEach((t) => t.stop());
         setRecording(false);
         try { setAudio(await blobToWav(new Blob(chunks))); }
-        catch { say("The recording could not be read. Please record again or type your request."); }
+        catch { setNotice("The recording could not be read. Please record again or type your request."); }
       };
       recorder.current = rec;
       rec.start();
       setTimeout(() => { if (rec.state === "recording") rec.stop(); }, 30_000);
+      setNotice("");
       setRecording(true);
     } catch {
-      say("The microphone is blocked in this browser. Type your request instead.");
+      setNotice("The microphone is blocked in this browser. Type your request instead.");
     }
   }
 
-  async function share(look: Look) {
+  async function share(id: number) {
     try {
-      await post("/api/looks", { id: look.id });
-      setMsgs((m) => m.map((x) => (x.from === "gemi" && x.look === look ? { ...x, look: { ...look, shared: true } } : x)));
+      await post("/api/looks", { id });
+      setJobs((js) => js && js.map((j) => (j.reply?.look?.id === id ? { ...j, reply: { ...j.reply, look: { ...j.reply.look!, shared: true } } } : j)));
     } catch (e) {
-      say(e instanceof Error ? e.message : "That look could not be shared. Try again.");
+      setNotice(e instanceof Error ? e.message : "That look could not be shared. Try again.");
     }
   }
 
-  const tryShared = (id: number) => {
-    if (!selfie) return say("Add your photo first, using the person button below.");
-    setMsgs((m) => [...m, { from: "you", text: "Try this look on me" }]);
-    run(() => postJob<Reply>(`/api/looks/${id}/tryon`, { selfie }));
-  };
+  const needSelfie = () => { setNotice("Add your photo first, using the person button below."); };
+  const tryShared = (id: number) => (selfie ? submit(`/api/looks/${id}/tryon`, { selfie }) : needSelfie());
+  const confirm = (shopping: Shopping & { job: number }, indices: number[]) =>
+    selfie || current ? submit("/api/chat", { selfie, currentId: current?.id, selection: { job: shopping.job, indices } }) : needSelfie();
 
   const pick = (set: (i: Img) => void, after?: (i: Img) => void) => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -129,37 +155,39 @@ export default function Chat() {
       const img = await fileToImg(file);
       set(img);
       after?.(img);
-    } catch { say("That photo could not be opened. Try a JPG, PNG or WebP image."); }
+      setNotice("");
+    } catch { setNotice("That photo could not be opened. Try a JPG, PNG or WebP image."); }
     finally { setUploading(false); }
   };
 
   async function pickOutfits(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (outfits.length + files.length > MAX_PHOTOS) return say(`Attach up to ${MAX_PHOTOS} photos at a time.`);
+    if (outfits.length + files.length > MAX_PHOTOS) return setNotice(`Attach up to ${MAX_PHOTOS} photos at a time.`);
     setUploading(true);
     try {
       const images = await Promise.all(files.map((file) => fileToImg(file, 768)));
       setOutfits((previous) => [...previous, ...images]);
-    } catch { say("One of those photos could not be opened. Try JPG, PNG or WebP images."); }
+    } catch { setNotice("One of those photos could not be opened. Try JPG, PNG or WebP images."); }
     finally { setUploading(false); }
   }
 
-  function confirm(shopping: Shopping & { job: number }, indices: number[]) {
-    if (!selfie && !current) return say("Add your photo first, using the person button below.");
-    setMsgs((messages) => [...messages, { from: "you", text: "Try these selected items on me" }]);
-    run(() => postJob<Reply>("/api/chat", { selfie, currentId: current?.id, selection: { job: shopping.job, indices } }));
-  }
-
   const chip = "flex items-center gap-2 rounded-full bg-mist py-1 pl-1 pr-2.5 text-xs font-medium";
+  const gemi = (
+    <div className="flex items-center gap-1 text-sm font-semibold">
+      {/* eslint-disable-next-line @next/next/no-img-element -- local vector brand mark */}
+      <img src="/icon.svg" alt="" width={32} height={32} className="size-8" />
+      Gemi
+    </div>
+  );
 
   return (
     <>
       <input ref={selfieInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload your photo" onChange={pick(setSelfie, saveSelfie)} />
       <input ref={outfitInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" multiple aria-label="Upload product or outfit photos" onChange={pickOutfits} />
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pb-6 pt-8">
-        {msgs.length === 0 && (
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pb-24 pt-8 md:pb-6">
+        {jobs?.length === 0 && (
           <div className="m-auto w-full max-w-xl py-10">
             <h1 className={`${display} text-5xl leading-none md:text-6xl`}>What are we wearing today, {me.username}?</h1>
             <p className="mt-4 text-lg text-mute">I’m Gemi, your AI stylist. Attach product or outfit photos, add instructions, or describe what you want to shop for. You can also say it out loud.</p>
@@ -174,62 +202,79 @@ export default function Chat() {
           </div>
         )}
 
-        {msgs.map((m, i) =>
-          m.from === "you" ? (
-            <div key={i} className="pop ml-auto flex max-w-[80%] flex-col items-end gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {m.outfits?.map((photo, index) => <img key={index} src={src(photo)} alt={`Reference photo ${index + 1} you attached`} className="w-40 rounded-3xl" />)}
-              {(m.text || m.voice) && (
-                <p className="rounded-3xl rounded-br-md bg-ink px-5 py-3 text-white">{m.text || "Voice request"}</p>
-              )}
-            </div>
-          ) : (
-            <div key={i} className="pop max-w-full space-y-3">
-              <div className="flex items-center gap-1 text-sm font-semibold">
-                {/* eslint-disable-next-line @next/next/no-img-element -- local vector brand mark */}
-                <img src="/icon.svg" alt="" width={32} height={32} className="size-8" />
-                Gemi
+        {jobs?.map((j) => {
+          const r = j.reply;
+          const photos = sentPhotos[j.id];
+          const words = j.request.text || (j.request.voice ? "Voice request" : "");
+          return (
+            <div key={j.id} className="contents">
+              <div className="pop ml-auto flex max-w-[80%] flex-col items-end gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {photos?.map((photo, index) => <img key={index} src={src(photo)} alt={`Reference photo ${index + 1} you attached`} className="w-40 rounded-3xl" />)}
+                {!photos && !!j.request.photos && <p className="text-sm text-mute">{j.request.photos} {j.request.photos === 1 ? "photo" : "photos"} attached</p>}
+                {words && (
+                  <p className="flex items-center gap-2 whitespace-pre-line rounded-3xl rounded-br-md bg-ink px-5 py-3 text-white">
+                    {j.request.voice && <Icon name="mic" className="size-4 shrink-0" />}{words}
+                  </p>
+                )}
               </div>
-              <p className="w-fit rounded-3xl rounded-bl-md bg-mist px-5 py-3">{m.note}</p>
-              {m.shopping && <Choices shopping={m.shopping} busy={busy || uploading} onConfirm={(indices) => confirm(m.shopping!, indices)} />}
-              {m.look && (
-                <div className="grid gap-5 rounded-[2rem] border border-line p-4 sm:grid-cols-[minmax(0,15rem)_1fr]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src(m.look.image)} alt={`You wearing ${describeLook(m.look.garments)}`} className="w-full rounded-3xl" />
-                  <div className="flex flex-col gap-4">
-                    <Receipt garments={m.look.garments} total={m.look.total_usd} />
-                    {m.look.shared ? (
-                      <p className="mt-auto flex items-center gap-2 text-sm font-semibold text-berry"><Icon name="check" /> Shared to the community</p>
-                    ) : m.look.id ? (
-                      <button className={`${btn} mt-auto self-start`} onClick={() => share(m.look!)}><Icon name="share" /> Share to community</button>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-              {m.similar && (m.similar.length ? (
-                <div className="masonry columns-2 sm:columns-3">
-                  {m.similar.map((s) => (
-                    <LookCard key={s.id} author={s.author} total={s.total_usd}
-                      // eslint-disable-next-line @next/next/no-img-element
-                      image={<img src={`/api/img/${s.id}`} alt={`Look by ${s.author}: ${describeLook(s.garments)}`} width={600} height={800} className="h-auto w-full" />}>
-                      <button className="flex-1 rounded-full bg-white py-2 text-sm font-semibold" disabled={busy} onClick={() => tryShared(s.id)}>Try on me</button>
-                    </LookCard>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-mute">Nothing in the community matches that yet.</p>
-              ))}
-            </div>
-          ),
-        )}
 
-        {busy && (
-          <p className="pulse-dots flex w-fit items-center gap-1.5 rounded-3xl rounded-bl-md bg-mist px-5 py-4" role="status">
-            <span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" />
-            <span className="sr-only">Gemi is styling you. This can take a few minutes.</span>
-          </p>
+              <div className="pop max-w-full space-y-3">
+                {gemi}
+                {j.status === "working" && (
+                  <div className={bubble} role="status">
+                    <p className="pulse-dots flex items-center gap-1.5 py-1">
+                      <span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" /><span className="size-2 rounded-full bg-ink" />
+                    </p>
+                    <p className="mt-1 text-sm text-mute">Working on it. This can take a few minutes. You can leave this page or close the tab; the answer will be here when you come back.</p>
+                  </div>
+                )}
+                {j.status === "failed" && <p className={bubble}>{j.error ?? "Something went wrong making that. Try again."}</p>}
+                {r && <p className={bubble}>{r.intent.message ?? TOOL_LABEL[r.intent.tool] ?? "Done"}</p>}
+                {r?.shopping && <Choices shopping={r.shopping} busy={busy || uploading} onConfirm={(indices) => confirm(r.shopping!, indices)} />}
+                {r?.look && (
+                  <div className="grid gap-5 rounded-[2rem] border border-line p-4 sm:grid-cols-[minmax(0,15rem)_1fr]">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- served from our own DB route */}
+                    <img src={`/api/img/${r.look.id}`} alt={`You wearing ${describeLook(r.look.garments)}`} width={600} height={800} className="h-auto w-full rounded-3xl" />
+                    <div className="flex flex-col gap-4">
+                      <Receipt garments={r.look.garments} total={r.look.total_usd} />
+                      <div className="mt-auto flex flex-wrap items-center gap-2">
+                        {r.look.shared ? (
+                          <p className="flex items-center gap-2 text-sm font-semibold text-berry"><Icon name="check" /> Shared to the community</p>
+                        ) : (
+                          <button className={btn} onClick={() => share(r.look!.id)}><Icon name="share" /> Share to community</button>
+                        )}
+                        <a className={btnGhost} href={`/api/img/${r.look.id}?download`} download><Icon name="download" /> Download</a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {r?.similar && (r.similar.length ? (
+                  <div className="masonry columns-2 sm:columns-3">
+                    {r.similar.map((s) => (
+                      <LookCard key={s.id} author={s.author} total={s.total_usd}
+                        // eslint-disable-next-line @next/next/no-img-element
+                        image={<img src={`/api/img/${s.id}`} alt={`Look by ${s.author}: ${describeLook(s.garments)}`} width={600} height={800} className="h-auto w-full" />}>
+                        <button className="flex-1 rounded-full bg-white py-2 text-sm font-semibold" disabled={busy} onClick={() => tryShared(s.id)}>Try on me</button>
+                      </LookCard>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-mute">Nothing in the community matches that yet.</p>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {sending && <p className={`${bubble} text-sm text-mute`} role="status">Sending…</p>}
+        {notice && (
+          <div className="pop space-y-3" role="alert">
+            {gemi}
+            <p className={bubble}>{notice}</p>
+          </div>
         )}
-        <div ref={end} />
+        <div ref={end} className="scroll-mb-44" />
       </main>
 
       <div className="sticky bottom-16 z-10 bg-gradient-to-t from-white via-white to-transparent px-4 pb-4 pt-6 md:bottom-0">
@@ -245,7 +290,7 @@ export default function Chat() {
               ))}
               {audio && (
                 <span className={`${chip} pl-2.5`}>
-                  <Icon name="mic" className="size-3.5" /> Voice request
+                  <Icon name="mic" className="size-3.5" /> Voice request ready. Press send.
                   <button onClick={() => setAudio(null)} aria-label="Remove voice request"><Icon name="close" className="size-3.5" /></button>
                 </span>
               )}
@@ -256,7 +301,7 @@ export default function Chat() {
           <textarea
             id="ask" ref={promptBox} rows={1} value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend) send(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={current ? "Ask for a change, like “swap the heels for sneakers”" : "Describe the look you want"}
             className="block w-full resize-none bg-transparent px-3 py-2 text-base placeholder:text-mute focus:outline-none"
           />

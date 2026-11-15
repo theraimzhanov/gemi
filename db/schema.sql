@@ -67,3 +67,6 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS jobs_user_created_idx ON jobs (user_id, created_at DESC);
+
+-- What the user asked, so the chat can be rebuilt after leaving the page or closing the browser.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS request jsonb NOT NULL DEFAULT '{}';

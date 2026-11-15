@@ -1,6 +1,7 @@
 import { currentUser } from "@/lib/auth";
 import { db, toVector } from "@/lib/db";
-import { describe, editLook, embed, extractGarments, generateTryOn, routeIntent, shopGarments, totalUsd, type Garment, type Img, type Intent } from "@/lib/gemini";
+import { describe, editLook, embed, extractGarments, generateTryOn, routeIntent, shopGarments, totalUsd, transcribe, type Garment, type Img, type Intent } from "@/lib/gemini";
+import { recentTurns } from "@/lib/job-views";
 import { startJob } from "@/lib/jobs";
 import { saveLook } from "@/lib/looks";
 import { bad, fail, isImg, UserError } from "@/lib/validate";
@@ -47,11 +48,20 @@ export async function POST(req: Request) {
       if (!selfie && !current) return bad("Add a photo of yourself first, using the person button.");
     }
 
-    return await startJob(user, async () => {
+    return await startJob(user, async (job) => {
+      let said = text;
+      if (audio && !confirmed) {
+        const heard = await transcribe(audio);
+        if (!heard) throw new UserError("I couldn't make out any words in that recording. Record it again a little closer to the microphone, or type your request.");
+        said = [text, heard].filter(Boolean).join("\n");
+        // Show the user what was heard, even if a later step fails.
+        await db.query("UPDATE jobs SET request = request || $2::jsonb WHERE id = $1", [job, JSON.stringify({ text: said })]);
+      }
       const intent: Intent = confirmed
         ? { tool: "shop_and_dress", request: confirmed.shopping.request, categories: confirmed.shopping.categories, budget_usd: confirmed.shopping.budget }
         : outfits.length && !text && !audio ? { tool: "steal_look" }
-        : await routeIntent({ text, audio, outfits, hasOutfitPhoto: !!outfits.length, hasCurrentLook: !!current });
+        : await routeIntent({ text: said, outfits, hasOutfitPhoto: !!outfits.length, hasCurrentLook: !!current,
+            history: await recentTurns(user.id), wearing: current ? describe(current.garments) : "" });
       const look = async (image: Img, garments: Garment[], refs: Img[]) =>
         ({ intent, look_id: await saveLook(user, image, garments, refs) });
 
@@ -61,7 +71,11 @@ export async function POST(req: Request) {
         const refs = selected.flatMap((c) => c.image ? [c.image] : []);
         const base = current?.garments ?? [];
         const image = await generateTryOn(current?.image ?? selfie!, garments, refs, confirmed.shopping.categories, confirmed.shopping.request);
-        const receipt = [...base.filter((g) => !confirmed.shopping.categories.includes(g.category)), ...garments];
+        // A dress takes the place of a top and bottom, and the other way round.
+        const gone = new Set(confirmed.shopping.categories);
+        if (gone.has("dress")) { gone.add("top"); gone.add("bottom"); }
+        if (gone.has("top") || gone.has("bottom")) gone.add("dress");
+        const receipt = [...base.filter((g) => !gone.has(g.category)), ...garments];
         // The rendered outfit is the authoritative reference for later community try-ons.
         return { ...await look(image, receipt, [image]), intent: { ...intent, message: `Your selected items total $${totalUsd(garments).toFixed(2)} before tax and shipping.${base.length ? " The receipt also includes the clothes kept from your previous look." : ""}` } };
       }
@@ -70,7 +84,7 @@ export async function POST(req: Request) {
         case "steal_look": {
           if (!selfie && !current) throw new UserError("Add a photo of yourself first, using the person button.");
           if (!outfits.length) throw new UserError("Attach the product or outfit photos you want to try.");
-          const instruction = [text, intent.instruction].filter(Boolean).join("\n");
+          const instruction = [said, intent.instruction].filter(Boolean).join("\n");
           const garments = await extractGarments(outfits, instruction);
           const image = await generateTryOn(current?.image ?? selfie!, garments, outfits, [...new Set(garments.map((g) => g.category))], instruction);
           return look(image, await extractGarments(image), [image]);
@@ -100,6 +114,6 @@ export async function POST(req: Request) {
         }
         default: return { intent };
       }
-    });
+    }, confirmed ? { text: "Try these selected items on me" } : { text, photos: outfits.length, voice: !!audio });
   } catch (e) { return fail(e); }
 }

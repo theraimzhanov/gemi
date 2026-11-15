@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setHandoff, loadSelfie, post, postJob, type FeedLook, type Look } from "@/lib/client";
+import { loadSelfie, post, type FeedLook } from "@/lib/client";
 import { describeLook, display, Icon, LookCard } from "../../ui";
 
 export default function Community() {
@@ -28,9 +28,9 @@ export default function Community() {
     const selfie = loadSelfie();
     if (!selfie) return setStatus("Add your photo in Chat or Profile first, then try the look on.");
     setBusy(id);
-    setStatus("Dressing you in that look. This can take up to a minute.");
     try {
-      setHandoff(await postJob<Look>(`/api/looks/${id}/tryon`, { selfie }));
+      // The work runs on the server; the chat shows it as soon as it is ready.
+      await post(`/api/looks/${id}/tryon`, { selfie });
       router.push("/studio");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Something went wrong. Try again.");
@@ -69,7 +69,7 @@ export default function Community() {
             // eslint-disable-next-line @next/next/no-img-element -- served from our own DB route
             image={<img src={`/api/img/${l.id}`} alt={`Look by ${l.author}: ${describeLook(l.garments)}`} width={600} height={800} className="h-auto w-full" loading="lazy" />}>
             <button className="flex-1 rounded-full bg-white py-2 text-sm font-semibold transition-colors hover:bg-tag disabled:opacity-60" disabled={busy !== null} onClick={() => tryOn(l.id)}>
-              {busy === l.id ? "Dressing you…" : "Try on me"}
+              {busy === l.id ? "Starting…" : "Try on me"}
             </button>
             <button className={`flex items-center gap-1 rounded-full bg-white px-3 py-2 text-sm font-semibold ${l.liked ? "text-berry" : ""}`}
               onClick={() => like(l.id)} aria-pressed={!!l.liked} aria-label={`Like this look. ${l.likes ?? 0} likes`}>

@@ -167,6 +167,8 @@ export async function routeIntent(input: {
   hasOutfitPhoto: boolean;
   outfits?: Img[];
   hasCurrentLook: boolean;
+  history?: string;
+  wearing?: string;
 }): Promise<Intent> {
   const str = { type: "string" };
   const fn = (name: string, description: string, properties: object, required: string[]) => ({
@@ -180,7 +182,14 @@ export async function routeIntent(input: {
     system_instruction:
       "You are Gemi, an AI stylist in a fashion try-on app. Route requests by calling exactly one function. " +
       `Context: outfit photo attached = ${input.hasOutfitPhoto}; user already has a generated look = ${input.hasCurrentLook}. ` +
-      "The request may be text, photos, a voice recording, or all three. When reference photos are attached, use steal_look to apply them, including requested modifications. Transcribe voice instructions into the instruction field. Do not ignore attachments.",
+      "The request may be text, photos, a voice recording, or all three. When reference photos are attached, use steal_look to apply them, including requested modifications; " +
+      "but if the user wants to FIND or BUY something like a photo, use shop_and_dress and describe the pictured item in the request. Transcribe voice instructions into the instruction field. Do not ignore attachments. " +
+      "Act whenever the request names a kind of clothing or an occasion: pick sensible categories yourself and do not ask about color, size or budget. " +
+      "Use reply only for greetings, questions about what you can do, or a request so vague you cannot tell what clothing is wanted; then ask ONE short question. " +
+      "Resolve follow-ups such as 'cheaper', 'another one' or 'in black' with the earlier conversation, and write request, instruction and query as complete standalone sentences. " +
+      "Answer in English.\n" +
+      (input.wearing ? `The user's current look: ${input.wearing}\n` : "") +
+      (input.history ? `Earlier conversation, oldest first:\n${input.history}` : ""),
     input: [
       text(input.text?.trim() || "(no text; listen to the audio)"),
       ...(input.outfits ?? []).map(image),
@@ -209,6 +218,7 @@ export async function routeIntent(input: {
         ["instruction"],
       ),
       fn("find_similar", "Find looks in the community feed similar to a description.", { query: str }, ["query"]),
+      fn("reply", "Say something to the user without doing any styling: answer a question or ask one short clarifying question.", { message: str }, ["message"]),
     ],
   });
   const call = r.steps?.find((s) => s.type === "function_call");
@@ -228,8 +238,21 @@ export async function routeIntent(input: {
     case "find_similar":
       return { tool: "find_similar", query: String(a.query ?? "") };
     default:
-      return { tool: "none", message: r.output_text || "I couldn't tell what you want. Try: 'find a $100 red dress'." };
+      return { tool: "none", message: String(a.message ?? "") || r.output_text || "I couldn't tell what you want. Try: 'find a $100 red dress'." };
   }
+}
+
+// What was said in a voice request, in English; empty when no words can be made out.
+export async function transcribe(audio: Img): Promise<string> {
+  const r = await create({
+    model: FLASH,
+    input: [
+      text("Write down the words spoken in this recording, translated to English if needed. Reply with only those words. If there is no clear speech, reply with exactly NONE."),
+      { type: "audio", mime_type: audio.mime, data: audio.data },
+    ],
+  });
+  const said = (r.output_text ?? "").trim();
+  return /^none\.?$/i.test(said) ? "" : said.slice(0, 1000);
 }
 
 export function extractGarments(outfit: Img | Img[], instruction = ""): Promise<Garment[]> {

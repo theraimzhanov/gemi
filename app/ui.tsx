@@ -20,6 +20,7 @@ const paths = {
   close: "M6 6l12 12M18 6 6 18",
   share: "M12 15V4M8 8l4-4 4 4M5 13v6h14v-6",
   check: "M5 12l5 5 9-10",
+  download: "M12 4v11M8 11l4 4 4-4M5 19h14",
   logout: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h9",
 };
 export type IconName = keyof typeof paths;

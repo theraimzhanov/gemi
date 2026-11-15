@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const look_id = await saveLook(user, await generateTryOn(selfie, garments, refs), garments, refs);
       await db.query("INSERT INTO look_events (look_id, kind, user_id) VALUES ($1, 'tryon', $2)", [id, user.id]);
       return { intent: { tool: "try_on" }, look_id };
-    });
+    }, { text: "Try this community look on me" });
   } catch (e) {
     return fail(e);
   }

@@ -24,7 +24,8 @@ const mock = (source) => 'data:text/javascript,' + encodeURIComponent('const s =
 const mocks = {
   '@/lib/auth': mock('export async function currentUser() { return s.user; }'),
   '@/lib/db': mock('export const db = { query: (...args) => s.query(...args) }; export const toVector = JSON.stringify;'),
-  '@/lib/jobs': mock('export async function startJob(user, work) { return Response.json(await work()); }'),
+  '@/lib/jobs': mock('export async function startJob(user, work) { return Response.json(await work(1)); }'),
+  '@/lib/job-views': mock('export async function recentTurns() { return ""; }'),
   '@/lib/looks': mock('export async function saveLook(user, image, garments, refs) { s.saved.push({image, garments, refs}); return 123; }'),
   '@/lib/gemini': mock(`
     export async function routeIntent(input) { s.routed = input; return s.intent; }
@@ -35,6 +36,7 @@ const mocks = {
     export const describe = JSON.stringify;
     export const totalUsd = (garments) => garments.reduce((sum, g) => sum + g.price_usd, 0);
     export async function embed() { return [1]; }
+    export async function transcribe() { return 'make it black'; }
   `),
 };
 registerHooks({ resolve(specifier, context, next) {
@@ -75,6 +77,13 @@ assert.match(state.shopped[3], /menswear/);
 await post({ currentId: 42, selection: { job: 9, indices: [0] } });
 assert.equal(state.generated.length, 1);
 assert.equal(state.saved[0].garments.length, 2, 'keep unchanged garments on the receipt');
+reset();
+state.current = [garment('top', 'old tee'), garment('bottom', 'old jeans'), garment('shoes', 'boots')];
+state.shopping = { request: 'dress', categories: ['dress'], candidates: [{ garment: garment('dress', 'floral dress') }] };
+await post({ currentId: 42, selection: { job: 9, indices: [0] } });
+assert.deepEqual(state.saved[0].garments.map((g) => g.category), ['shoes', 'dress'], 'a dress replaces the top and bottom on the receipt');
+state.current = [garment('bottom', 'shorts')];
+state.shopping = { request: 'blue shirt', categories: ['top'], budget: 30, candidates: [{ garment: garment('top', 'blue shirt') }] };
 assert.equal((await post({ currentId: 42, selection: { job: 9, indices: [999] } })).status, 400);
 state.shopping.budget = 1;
 assert.equal((await post({ currentId: 42, selection: { job: 9, indices: [0] } })).status, 400);

@@ -44,35 +44,11 @@ export function saveSelfie(i: Img) {
   }
 }
 
-// Carries a try-on result from the feed page to the studio across client navigation.
-let handoff: Look | null = null;
-export const setHandoff = (look: Look) => { handoff = look; };
-export function takeHandoff() {
-  const look = handoff;
-  handoff = null;
-  return look;
-}
-
 export async function post<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "Request failed");
   return data;
-}
-
-// The job survives navigation; after() is still bounded by the hosting platform's function timeout.
-export async function postJob<T>(url: string, body: unknown): Promise<T> {
-  const { job } = await post<{ job: number }>(url, body);
-  for (let tries = 0; tries < 155; tries++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`/api/jobs/${job}`).catch(() => null);
-    if (!res) continue; // a dropped connection: keep waiting, the job carries on without us
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error ?? "Request failed");
-    if (data.status === "done") return data.reply;
-    if (data.status === "failed") throw new Error(data.error ?? "Something went wrong making that. Try again.");
-  }
-  throw new Error("That is taking longer than usual. Look in My looks in a minute; it will appear there when it is ready.");
 }
 
 // Browsers record webm/opus, which Gemini does not list as supported; re-encode to 16 kHz mono WAV.

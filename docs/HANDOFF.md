@@ -10,7 +10,7 @@ Gemi is an AI stylist built for HackUTA 2026. Users upload a photo of themselves
 4. `npm run dev` (the existing local server is on port 3000).
 5. `npm test`, `npm run lint`, and `npm run build` require no paid generations. `npm run test:db` needs the running local server and the configured database; it creates isolated fixtures and removes them in `finally`.
 
-Optional `DAILY_JOB_LIMIT` defaults to **10 requests per user in a rolling 24 hours**. Searches, confirmations, edits, similar-look requests, community try-ons, and failed attempts all count. Search plus confirmation uses two requests. Reservations are serialized per user before provider calls. This is a request cap, not an exact dollar cap or protection against creating multiple accounts.
+Optional `DAILY_JOB_LIMIT` defaults to **40 requests per user in a rolling 24 hours**. Searches, confirmations, edits, similar-look requests, community try-ons, and failed attempts all count. Search plus confirmation uses two requests. Reservations are serialized per user before provider calls. This is a request cap, not an exact dollar cap or protection against creating multiple accounts.
 
 ## Changes on codex/hackathon-styling-fixes
 
@@ -52,4 +52,13 @@ The first live shopping attempt got an unusable OpenRouter response followed by 
 
 Generative edits are best-effort: a passing example cannot guarantee exact identity, product fidelity, or preservation on every image. Product prices and stock come from web search, not retailer checkout APIs. Hardware microphone recording, a live four-product composite, a live full $500 outfit, and deployment remain unverified.
 
-Unchanged backlog: chat history disappears on reload; selfies are browser-local; no delete/unshare/unlike; no password reset, email verification or login rate limit. Timescale CA expires in October 2027. These are outside the nine handoff fixes.
+Unchanged backlog: selfies are browser-local; no delete/unshare/unlike; no password reset, email verification or login rate limit. Timescale CA expires in October 2027. These are outside the nine handoff fixes.
+
+## Background work and chat history (added after the merge)
+
+- Every request is a row in `jobs`, now with a `request` column (`text`, `photos` count, `voice`). The work runs in `after()` and does not need the page: the user can change screen or close the tab.
+- The chat screen is built from `GET /api/jobs` (latest 20, `lib/job-views.ts`) and polls `GET /api/jobs/:id` only for rows still working. Failures are shown as Gemi's text. A row still working after six minutes is reported as stopped; a server restart or the host's function limit can cause that, so this is still not a durable queue.
+- Voice: the recording is transcribed first (`transcribe` in `lib/gemini.ts`), the words are saved on the job and shown in the user's bubble, then routed like typed text. No clear speech gives a readable error.
+- The router is given the last six turns and the current outfit, and has a `reply` tool to ask one question when a request is too vague.
+- Pictures download from `/api/img/:id?download` (Chat and My looks).
+- Verified live on 2026-11-15 with the demo account: three reference photos plus instructions; a spoken request (synthesised WAV posted to the API, not a real microphone); a vague message, the follow-up answer, web search, choosing a dress and trying it on. Two of the jobs were left running while on another screen and were complete on return.
